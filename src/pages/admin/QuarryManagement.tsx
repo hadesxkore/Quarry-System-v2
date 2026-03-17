@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { format } from "date-fns";
 import {
@@ -20,8 +20,16 @@ import {
 import {
     Plus, Search, Pencil, Trash2, Loader2, Mountain,
     FileText, AlertTriangle, MoreHorizontal, X, CalendarIcon,
+    Download, FileImage, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// ── PDF renderer ─────────────────────────────────────────────────────────────
+import {
+    Document, Page, Text, View, StyleSheet, pdf,
+    Font,
+} from "@react-pdf/renderer";
+import type { Style } from "@react-pdf/types";
 
 // ── Official Bataan Barangay Data — Source: PhilAtlas (PSGC-verified) ────────
 const BATAAN_DATA: Record<string, string[]> = {
@@ -524,6 +532,420 @@ function DeleteDialog({
     );
 }
 
+// ── PDF Styles ────────────────────────────────────────────────────────────────
+Font.registerHyphenationCallback((word) => [word]);
+
+const pdfStyles = StyleSheet.create({
+    page: {
+        fontFamily: "Helvetica",
+        fontSize: 8,
+        paddingTop: 36,
+        paddingBottom: 48,
+        paddingHorizontal: 36,
+        backgroundColor: "#ffffff",
+    },
+    // ── Header block
+    headerBlock: {
+        marginBottom: 20,
+        borderBottomWidth: 2,
+        borderBottomColor: "#1e293b",
+        paddingBottom: 14,
+    },
+    headerTopRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 6,
+    },
+    badgeBox: {
+        backgroundColor: "#1e293b",
+        borderRadius: 6,
+        paddingHorizontal: 9,
+        paddingVertical: 5,
+        marginRight: 12,
+    },
+    badgeText: {
+        color: "#ffffff",
+        fontSize: 11,
+        fontFamily: "Helvetica-Bold",
+        letterSpacing: 1,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontFamily: "Helvetica-Bold",
+        color: "#0f172a",
+        letterSpacing: 0.5,
+    },
+    headerSubtitle: {
+        fontSize: 8.5,
+        color: "#64748b",
+        marginTop: 3,
+    },
+    metaRow: {
+        flexDirection: "row",
+        marginTop: 10,
+        gap: 18,
+    },
+    metaItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+    },
+    metaLabel: {
+        fontSize: 7,
+        color: "#94a3b8",
+        fontFamily: "Helvetica-Bold",
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+    },
+    metaValue: {
+        fontSize: 7.5,
+        color: "#334155",
+        fontFamily: "Helvetica-Bold",
+    },
+    // ── Summary cards row
+    summaryRow: {
+        flexDirection: "row",
+        gap: 10,
+        marginBottom: 18,
+    },
+    summaryCard: {
+        flex: 1,
+        backgroundColor: "#f8fafc",
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        alignItems: "center",
+    },
+    summaryCardNum: {
+        fontSize: 20,
+        fontFamily: "Helvetica-Bold",
+        color: "#0f172a",
+        lineHeight: 1.1,
+    },
+    summaryCardLabel: {
+        fontSize: 6.5,
+        color: "#94a3b8",
+        fontFamily: "Helvetica-Bold",
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+        marginTop: 3,
+    },
+    summaryCardSub: {
+        fontSize: 6,
+        color: "#cbd5e1",
+        marginTop: 2,
+    },
+    // ── Table
+    tableContainer: {
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        overflow: "hidden",
+    },
+    tableHeader: {
+        flexDirection: "row",
+        backgroundColor: "#1e293b",
+        paddingVertical: 9,
+        paddingHorizontal: 10,
+    },
+    tableHeaderCell: {
+        color: "#94a3b8",
+        fontSize: 6,
+        fontFamily: "Helvetica-Bold",
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
+    },
+    tableRow: {
+        flexDirection: "row",
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderTopWidth: 1,
+        borderTopColor: "#f1f5f9",
+        alignItems: "center",
+    },
+    tableRowAlt: {
+        backgroundColor: "#f8fafc",
+    },
+    tableCell: {
+        fontSize: 7.5,
+        color: "#334155",
+    },
+    tableCellMono: {
+        fontSize: 7,
+        color: "#64748b",
+        fontFamily: "Helvetica",
+    },
+    tableCellBold: {
+        fontSize: 7.5,
+        color: "#0f172a",
+        fontFamily: "Helvetica-Bold",
+    },
+    // status pill colours (text only — PDF doesn't support border-radius well on inline text)
+    statusActive: { color: "#059669", fontFamily: "Helvetica-Bold" },
+    statusExpired: { color: "#6b7280", fontFamily: "Helvetica-Bold" },
+    statusPending: { color: "#d97706", fontFamily: "Helvetica-Bold" },
+    statusSuspended: { color: "#ea580c", fontFamily: "Helvetica-Bold" },
+    statusRevoked: { color: "#dc2626", fontFamily: "Helvetica-Bold" },
+    // ── Footer
+    pageFooter: {
+        position: "absolute",
+        bottom: 20,
+        left: 36,
+        right: 36,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        borderTopWidth: 1,
+        borderTopColor: "#e2e8f0",
+        paddingTop: 8,
+    },
+    footerLeft: { fontSize: 6.5, color: "#94a3b8" },
+    footerRight: { fontSize: 6.5, color: "#94a3b8" },
+});
+
+// column widths (must sum ~100%)
+const COL = {
+    permit: "13%",
+    proponent: "17%",
+    barangay: "12%",
+    municipality: "12%",
+    area: "7%",
+    contact: "11%",
+    issued: "10%",
+    expires: "10%",
+    status: "8%",
+};
+
+function statusStyle(s: string): Style {
+    const map: Record<string, Style> = {
+        Active: pdfStyles.statusActive,
+        Expired: pdfStyles.statusExpired,
+        Pending: pdfStyles.statusPending,
+        Suspended: pdfStyles.statusSuspended,
+        Revoked: pdfStyles.statusRevoked,
+    };
+    return (map[s] ?? pdfStyles.statusExpired) as Style;
+}
+
+function fmt(val: string) {
+    if (!val) return "—";
+    try { return format(new Date(val + "T00:00:00"), "MMM d, yyyy"); } catch { return val; }
+}
+
+// ── PDF Document component ────────────────────────────────────────────────────
+function QuarryPDFDocument({ records, generatedAt }: { records: QuarryRecord[]; generatedAt: string }) {
+    const statusCounts = STATUS_OPTIONS.reduce<Record<string, number>>((acc, s) => {
+        acc[s] = records.filter((r) => r.status === s).length;
+        return acc;
+    }, {});
+
+    return (
+        <Document title="Quarry Management Report" author="PGB Quarry System">
+            <Page size="A4" orientation="landscape" style={pdfStyles.page}>
+
+                {/* ── Header ── */}
+                <View style={pdfStyles.headerBlock}>
+                    <View style={pdfStyles.headerTopRow}>
+                        <View style={pdfStyles.badgeBox}>
+                            <Text style={pdfStyles.badgeText}>PGB</Text>
+                        </View>
+                        <View>
+                            <Text style={pdfStyles.headerTitle}>Quarry Management Report</Text>
+                            <Text style={pdfStyles.headerSubtitle}>
+                                Province of Bataan — Official Permit & Operator Registry
+                            </Text>
+                        </View>
+                    </View>
+                    <View style={pdfStyles.metaRow}>
+                        <View style={pdfStyles.metaItem}>
+                            <Text style={pdfStyles.metaLabel}>Generated:</Text>
+                            <Text style={pdfStyles.metaValue}>{generatedAt}</Text>
+                        </View>
+                        <View style={pdfStyles.metaItem}>
+                            <Text style={pdfStyles.metaLabel}>Total Records:</Text>
+                            <Text style={pdfStyles.metaValue}>{records.length}</Text>
+                        </View>
+                        <View style={pdfStyles.metaItem}>
+                            <Text style={pdfStyles.metaLabel}>Active Permits:</Text>
+                            <Text style={pdfStyles.metaValue}>{statusCounts["Active"] ?? 0}</Text>
+                        </View>
+                    </View>
+                </View>
+
+                {/* ── Summary Cards ── */}
+                <View style={pdfStyles.summaryRow}>
+                    {STATUS_OPTIONS.map((s) => (
+                        <View key={s} style={pdfStyles.summaryCard}>
+                            <Text style={[pdfStyles.summaryCardNum, statusStyle(s) as object]}>
+                                {statusCounts[s] ?? 0}
+                            </Text>
+                            <Text style={pdfStyles.summaryCardLabel}>{s}</Text>
+                            <Text style={pdfStyles.summaryCardSub}>permits</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* ── Table ── */}
+                <View style={pdfStyles.tableContainer}>
+                    {/* Header row */}
+                    <View style={pdfStyles.tableHeader}>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.permit }]}>Permit No.</Text>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.proponent }]}>Proponent</Text>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.barangay }]}>Barangay</Text>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.municipality }]}>Municipality</Text>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.area }]}>Area (ha)</Text>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.contact }]}>Contact</Text>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.issued }]}>Issued</Text>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.expires }]}>Expires</Text>
+                        <Text style={[pdfStyles.tableHeaderCell, { width: COL.status }]}>Status</Text>
+                    </View>
+
+                    {/* Data rows */}
+                    {records.map((r, i) => (
+                        <View key={r.id} style={i % 2 !== 0 ? [pdfStyles.tableRow, pdfStyles.tableRowAlt] : pdfStyles.tableRow}>
+                            <Text style={[pdfStyles.tableCellMono, { width: COL.permit }]}>{r.permitNumber || "—"}</Text>
+                            <Text style={[pdfStyles.tableCellBold, { width: COL.proponent }]}>{r.proponent || "—"}</Text>
+                            <Text style={[pdfStyles.tableCell, { width: COL.barangay }]}>{r.barangay || "—"}</Text>
+                            <Text style={[pdfStyles.tableCell, { width: COL.municipality }]}>{r.municipality || "—"}</Text>
+                            <Text style={[pdfStyles.tableCell, { width: COL.area }]}>{r.areaHectares ? `${r.areaHectares} ha` : "—"}</Text>
+                            <Text style={[pdfStyles.tableCell, { width: COL.contact }]}>{r.contactNumber || "—"}</Text>
+                            <Text style={[pdfStyles.tableCell, { width: COL.issued }]}>{fmt(r.dateOfIssuance)}</Text>
+                            <Text style={[pdfStyles.tableCell, { width: COL.expires }]}>{fmt(r.dateOfExpiration)}</Text>
+                            <Text style={[pdfStyles.tableCell, { width: COL.status }, statusStyle(r.status)]}>
+                                {r.status || "—"}
+                            </Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* ── Footer ── */}
+                <View style={pdfStyles.pageFooter} fixed>
+                    <Text style={pdfStyles.footerLeft}>PGB Quarry Management System — Confidential</Text>
+                    <Text style={pdfStyles.footerRight} render={({ pageNumber, totalPages }) =>
+                        `Page ${pageNumber} of ${totalPages}`
+                    } />
+                </View>
+            </Page>
+        </Document>
+    );
+}
+
+// ── Export as JPG snapshot ────────────────────────────────────────────────────
+// Uses html-to-image which renders via SVG foreignObject — the browser resolves
+// all CSS (including oklch) natively, so there is no custom CSS parser that can
+// choke on Tailwind v4 color functions.
+async function exportTableAsJpg(tableRef: React.RefObject<HTMLDivElement | null>, filename: string) {
+    const { toJpeg } = await import("html-to-image");
+    const node = tableRef.current;
+    if (!node) return;
+
+    const dataUrl = await toJpeg(node, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+        // Add some padding so shadows / borders aren't clipped
+        style: { margin: "0", borderRadius: "0" },
+    });
+
+    const link = document.createElement("a");
+    link.download = filename;
+    link.href = dataUrl;
+    link.click();
+}
+
+// ── Export Dropdown ───────────────────────────────────────────────────────────
+function ExportDropdown({
+    onExportPDF,
+    onExportJPG,
+    loading,
+}: {
+    onExportPDF: () => void;
+    onExportJPG: () => void;
+    loading: "pdf" | "jpg" | null;
+}) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    // Close on outside click
+    useEffect(() => {
+        if (!open) return;
+        function handler(e: MouseEvent) {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                setOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [open]);
+
+    return (
+        <div className="relative" ref={ref}>
+            <Button
+                onClick={() => setOpen((v) => !v)}
+                disabled={loading !== null}
+                className={cn(
+                    "flex items-center gap-1.5 rounded-lg h-9 px-4 text-[13px] font-semibold shadow-sm transition-all",
+                    "bg-gradient-to-br from-slate-700 to-slate-900 hover:from-slate-600 hover:to-slate-800 text-white",
+                    "border border-slate-600/40"
+                )}
+            >
+                {loading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                    <Download className="w-3.5 h-3.5" />
+                )}
+                {loading === "pdf" ? "Exporting PDF…" : loading === "jpg" ? "Exporting JPG…" : "Export"}
+                {!loading && <ChevronDown className={cn("w-3 h-3 transition-transform", open && "rotate-180")} />}
+            </Button>
+
+            <AnimatePresence>
+                {open && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: -6 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -6 }}
+                        transition={{ duration: 0.13 }}
+                        className="absolute right-0 top-11 z-50 min-w-[190px] bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden py-1.5"
+                    >
+                        {/* PDF Option */}
+                        <button
+                            onClick={() => { setOpen(false); onExportPDF(); }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors group"
+                        >
+                            <div className="w-8 h-8 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center shrink-0 group-hover:bg-red-100 transition-colors">
+                                <FileText className="w-4 h-4 text-red-500" />
+                            </div>
+                            <div className="text-left">
+                                <p className="text-[12.5px] font-semibold text-gray-800">Export as PDF</p>
+                                <p className="text-[10.5px] text-gray-400">Formatted report with summary</p>
+                            </div>
+                        </button>
+
+                        {/* Divider */}
+                        <div className="mx-3 my-1 border-t border-gray-100" />
+
+                        {/* JPG Option */}
+                        <button
+                            onClick={() => { setOpen(false); onExportJPG(); }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors group"
+                        >
+                            <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-100 flex items-center justify-center shrink-0 group-hover:bg-sky-100 transition-colors">
+                                <FileImage className="w-4 h-4 text-sky-500" />
+                            </div>
+                            <div className="text-left">
+                                <p className="text-[12.5px] font-semibold text-gray-800">Export as JPG</p>
+                                <p className="text-[10.5px] text-gray-400">Snapshot of the current table</p>
+                            </div>
+                        </button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 export default function QuarryManagement() {
     const [records, setRecords] = useState<QuarryRecord[]>([]);
@@ -533,6 +955,10 @@ export default function QuarryManagement() {
     const [editTarget, setEditTarget] = useState<QuarryRecord | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<QuarryRecord | null>(null);
     const [menuOpen, setMenuOpen] = useState<string | null>(null);
+    const [exportLoading, setExportLoading] = useState<"pdf" | "jpg" | null>(null);
+
+    // Ref for JPG snapshot — wraps the table section
+    const tableRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const q = query(collection(db, "quarries"), orderBy("createdAt", "desc"));
@@ -561,6 +987,41 @@ export default function QuarryManagement() {
         } catch { return val; }
     }
 
+    // ── Export handlers
+    async function handleExportPDF() {
+        setExportLoading("pdf");
+        try {
+            const generatedAt = format(new Date(), "MMMM d, yyyy 'at' h:mm a");
+            const blob = await pdf(
+                <QuarryPDFDocument records={filtered} generatedAt={generatedAt} />
+            ).toBlob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `quarry-management-${format(new Date(), "yyyy-MM-dd")}.pdf`;
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("PDF export failed", err);
+        } finally {
+            setExportLoading(null);
+        }
+    }
+
+    async function handleExportJPG() {
+        setExportLoading("jpg");
+        try {
+            await exportTableAsJpg(
+                tableRef,
+                `quarry-management-${format(new Date(), "yyyy-MM-dd")}.jpg`
+            );
+        } catch (err) {
+            console.error("JPG export failed", err);
+        } finally {
+            setExportLoading(null);
+        }
+    }
+
     const cols = [
         "Permit No.", "Proponent", "Barangay", "Municipality",
         "Area (ha)", "Contact", "Issued", "Expires", "Status", "",
@@ -574,10 +1035,18 @@ export default function QuarryManagement() {
                     <h1 className="text-[22px] font-semibold text-gray-900 tracking-tight">Quarry Management</h1>
                     <p className="text-[13px] text-gray-400 mt-0.5">Manage quarry permits and operator information</p>
                 </div>
-                <Button onClick={() => setAddOpen(true)}
-                    className="bg-slate-900 hover:bg-slate-800 text-white text-[13px] gap-1.5 rounded-lg shadow-sm h-9 px-4">
-                    <Plus className="w-3.5 h-3.5" /> Add Record
-                </Button>
+                {/* Button group */}
+                <div className="flex items-center gap-2">
+                    <ExportDropdown
+                        onExportPDF={handleExportPDF}
+                        onExportJPG={handleExportJPG}
+                        loading={exportLoading}
+                    />
+                    <Button onClick={() => setAddOpen(true)}
+                        className="bg-slate-900 hover:bg-slate-800 text-white text-[13px] gap-1.5 rounded-lg shadow-sm h-9 px-4">
+                        <Plus className="w-3.5 h-3.5" /> Add Record
+                    </Button>
+                </div>
             </div>
 
             {/* Search */}
@@ -599,8 +1068,8 @@ export default function QuarryManagement() {
                 </span>
             </div>
 
-            {/* Table */}
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            {/* Table — wrapped in ref for JPG capture */}
+            <div ref={tableRef} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                 <div className="grid text-[10px] text-gray-400 uppercase tracking-widest font-semibold border-b border-gray-100 px-4 py-3 bg-gray-50/80"
                     style={{ gridTemplateColumns: "1.1fr 1.4fr 1fr 1fr 0.7fr 1fr 0.9fr 0.9fr 0.8fr 40px" }}>
                     {cols.map((c) => <span key={c}>{c}</span>)}

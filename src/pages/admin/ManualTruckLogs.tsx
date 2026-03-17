@@ -19,8 +19,10 @@ import {
 import {
     Truck, Plus, ImageIcon, X, Loader2,
     Mountain, CheckCircle2, Clock, TrendingUp, TrendingDown,
-    Upload, Search, LayoutGrid, History,
+    Upload, Search, LayoutGrid, History, CalendarIcon, ChevronDown,
 } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { sileo } from "sileo";
 import { usePagination, TablePagination } from "@/components/ui/table-pagination";
@@ -272,15 +274,16 @@ function ImageZone({
 
 // ── Count Truck Modal ─────────────────────────────────────────────────────────
 function CountTruckModal({
-    quarry, onClose,
+    quarry, onClose, initialDate,
 }: {
     quarry: QuarryRecord | null;
     onClose: () => void;
+    initialDate: Date;
 }) {
     const open = quarry !== null;
     const [truckMovement, setTruckMovement] = useState("");
     const [truckStatus, setTruckStatus] = useState("");
-    const [logDateTime, setLogDateTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+    const [logDateTime, setLogDateTime] = useState("");
     const [truckCount, setTruckCount] = useState("1");
     const [image, setImage] = useState<File | null>(null);
     const [saving, setSaving] = useState(false);
@@ -288,10 +291,15 @@ function CountTruckModal({
     useEffect(() => {
         if (open) {
             setTruckMovement(""); setTruckStatus("");
-            setLogDateTime(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+            // Seed date from the page-level date picker; keep current clock time
+            const now = new Date();
+            const seeded = new Date(initialDate);
+            seeded.setHours(now.getHours(), now.getMinutes(), 0, 0);
+            setLogDateTime(format(seeded, "yyyy-MM-dd'T'HH:mm"));
             setTruckCount("1"); setImage(null);
             setSaving(false);
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open]);
 
     // Auto-set truck status when movement changes
@@ -504,6 +512,10 @@ export default function ManualTruckLogs() {
     const [viewImageUrl, setViewImageUrl] = useState("");
     const [activeTab, setActiveTab] = useState<TabId>("counting");
     const [search, setSearch] = useState("");
+    // Page-level date picker — seeds the Count Truck modal datetime
+    const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+    const [datePickerOpen, setDatePickerOpen] = useState(false);
+    const isToday = format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
 
     useEffect(() => {
         const unsub = onSnapshot(collection(db, "quarries"), (snap) => {
@@ -565,13 +577,94 @@ export default function ManualTruckLogs() {
     return (
         <div className="p-6 space-y-6">
             {/* Page header */}
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                     <h1 className="text-[22px] font-semibold text-gray-900 tracking-tight">Manual Truck Logs</h1>
                     <p className="text-[13px] text-gray-400 mt-0.5">
                         Count truck movements per quarry site
                     </p>
                 </div>
+
+                {/* ── Page-level Date Picker ── */}
+                <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                    <PopoverTrigger asChild>
+                        <button
+                            className={cn(
+                                "flex items-center gap-2.5 h-10 px-4 rounded-xl border text-[13px] font-semibold transition-all shadow-sm",
+                                "bg-white hover:bg-gray-50 hover:border-slate-300",
+                                isToday
+                                    ? "border-gray-200 text-gray-700"
+                                    : "border-slate-400 text-slate-800 bg-slate-50 ring-1 ring-slate-200"
+                            )}
+                        >
+                            <CalendarIcon className="w-4 h-4 text-slate-500 shrink-0" />
+                            <span>
+                                {isToday
+                                    ? "Today"
+                                    : format(selectedDate, "MMM d, yyyy")}
+                            </span>
+                            {!isToday && (
+                                <span className="text-[10px] font-bold bg-slate-800 text-white px-1.5 py-0.5 rounded-full">
+                                    Custom
+                                </span>
+                            )}
+                            <ChevronDown className={cn(
+                                "w-3.5 h-3.5 text-gray-400 transition-transform",
+                                datePickerOpen && "rotate-180"
+                            )} />
+                        </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                        align="end"
+                        sideOffset={8}
+                        className="w-auto p-0 bg-white border border-gray-200 shadow-xl rounded-2xl overflow-hidden"
+                    >
+                        {/* Calendar header */}
+                        <div className="px-4 pt-4 pb-2 border-b border-gray-100">
+                            <p className="text-[13px] font-bold text-gray-800">Select Log Date</p>
+                            <p className="text-[11.5px] text-gray-400 mt-0.5">
+                                Sets the date in the Count Truck modal
+                            </p>
+                        </div>
+                        <div className="p-3">
+                            <Calendar
+                                mode="single"
+                                selected={selectedDate}
+                                onSelect={(d) => {
+                                    if (d) { setSelectedDate(d); setDatePickerOpen(false); }
+                                }}
+                                captionLayout="dropdown"
+                                fromYear={2020}
+                                toYear={2030}
+                            />
+                        </div>
+                        {/* Quick actions */}
+                        <div className="px-4 pb-4 flex gap-2">
+                            <button
+                                onClick={() => { setSelectedDate(new Date()); setDatePickerOpen(false); }}
+                                className={cn(
+                                    "flex-1 h-8 rounded-lg text-[12px] font-semibold border transition-colors",
+                                    isToday
+                                        ? "bg-slate-900 text-white border-slate-900"
+                                        : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                                )}
+                            >
+                                Today
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const y = new Date();
+                                    y.setDate(y.getDate() - 1);
+                                    setSelectedDate(y);
+                                    setDatePickerOpen(false);
+                                }}
+                                className="flex-1 h-8 rounded-lg text-[12px] font-semibold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                                Yesterday
+                            </button>
+                        </div>
+                    </PopoverContent>
+                </Popover>
             </div>
 
             {/* ── Tabs + Search bar ── */}
@@ -666,8 +759,8 @@ export default function ManualTruckLogs() {
                         {/* Quarry cards */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                             {!quarriesLoading && filteredQuarries.map((q, i) => {
-                                const today = format(new Date(), "yyyy-MM-dd");
-                                const todayLogs = logs.filter(l => l.quarryId === q.id && l.logDateTime?.startsWith(today));
+                                const dateKey = format(selectedDate, "yyyy-MM-dd");
+                                const todayLogs = logs.filter(l => l.quarryId === q.id && l.logDateTime?.startsWith(dateKey));
                                 const truckIn = todayLogs.filter(l => l.truckMovement === "Truck In").reduce((a, l) => a + (parseInt(l.truckCount) || 0), 0);
                                 const truckOut = todayLogs.filter(l => l.truckMovement === "Truck Out").reduce((a, l) => a + (parseInt(l.truckCount) || 0), 0);
 
@@ -720,7 +813,9 @@ export default function ManualTruckLogs() {
                                                 <TrendingUp className="w-3.5 h-3.5" />
                                                 {truckOut} Truck Out
                                             </span>
-                                            <span className="ml-auto text-[11px] text-gray-300">Today</span>
+                                            <span className="ml-auto text-[11px] text-gray-300">
+                                                {isToday ? "Today" : format(selectedDate, "MMM d")}
+                                            </span>
                                         </div>
 
                                         <Button
@@ -868,7 +963,7 @@ export default function ManualTruckLogs() {
             </AnimatePresence>
 
             {/* Modals */}
-            <CountTruckModal quarry={selectedQuarry} onClose={() => setSelectedQuarry(null)} />
+            <CountTruckModal quarry={selectedQuarry} onClose={() => setSelectedQuarry(null)} initialDate={selectedDate} />
             <ImageViewModal url={viewImageUrl} onClose={() => setViewImageUrl("")} />
         </div>
     );
