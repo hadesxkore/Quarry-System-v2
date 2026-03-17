@@ -778,7 +778,7 @@ function QuarryPDFDocument({ records, generatedAt }: { records: QuarryRecord[]; 
                 <View style={pdfStyles.summaryRow}>
                     {STATUS_OPTIONS.map((s) => (
                         <View key={s} style={pdfStyles.summaryCard}>
-                            <Text style={[pdfStyles.summaryCardNum, statusStyle(s) as object]}>
+                            <Text style={[pdfStyles.summaryCardNum, statusStyle(s)]}>
                                 {statusCounts[s] ?? 0}
                             </Text>
                             <Text style={pdfStyles.summaryCardLabel}>{s}</Text>
