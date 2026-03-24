@@ -35,6 +35,15 @@ interface TruckLog {
     truckCount: string;
 }
 
+interface QuarryRecord {
+    id: string;
+    permitNumber: string;
+    proponent: string;
+    municipality: string;
+    barangay: string;
+    status: string;
+}
+
 type Preset = "this-week" | "this-month" | "this-year" | "custom";
 
 // ── PDF Styles ────────────────────────────────────────────────────────────────
@@ -229,12 +238,20 @@ function getPresetRange(preset: Preset): { from: Date; to: Date } {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Reports() {
+    const [quarries, setQuarries] = useState<QuarryRecord[]>([]);
     const [logs, setLogs] = useState<TruckLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [preset, setPreset] = useState<Preset>("this-month");
     const [customFrom, setCustomFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
     const [customTo, setCustomTo] = useState(format(endOfMonth(new Date()), "yyyy-MM-dd"));
     const [showPdf, setShowPdf] = useState(false);
+
+    useEffect(() => {
+        const unsub = onSnapshot(collection(db, "quarries"), (snap) => {
+            setQuarries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as QuarryRecord)));
+        });
+        return unsub;
+    }, []);
 
     useEffect(() => {
         const q = query(collection(db, "manualTruckLogs"), orderBy("createdAt", "desc"));
@@ -281,28 +298,46 @@ export default function Reports() {
     // Per-quarry summary
     const quarrySummaries = useMemo<QuarrySummary[]>(() => {
         const map = new Map<string, QuarrySummary>();
+        
+        // Initialize all quarries first with 0 counts
+        quarries.forEach((q) => {
+            map.set(q.id, {
+                name: q.proponent || q.permitNumber || "Unnamed Quarry",
+                municipality: q.municipality || "",
+                trucksIn: 0, trucksOut: 0, total: 0,
+                empty: 0, halfLoaded: 0, full: 0,
+            });
+        });
+
         filteredLogs.forEach((l) => {
-            const key = l.quarryName || "Unknown";
-            const existing = map.get(key) ?? {
-                name: key,
+            // If the log is from a deleted quarry, we still want to show it, so we fallback to its name or ID
+            const existing = map.get(l.quarryId) ?? {
+                name: l.quarryName || "Unknown",
                 municipality: l.quarryMunicipality ?? "",
                 trucksIn: 0, trucksOut: 0, total: 0,
                 empty: 0, halfLoaded: 0, full: 0,
             };
+
             const count = parseInt(l.truckCount) || 0;
             if (l.truckMovement === "Truck In") existing.trucksIn += count;
             else existing.trucksOut += count;
             existing.total = existing.trucksIn + existing.trucksOut;
-            // Status tallies (count each log entry, not each truck)
+            
             if (l.truckStatus === "Empty") existing.empty += 1;
             else if (l.truckStatus === "Half Loaded") existing.halfLoaded += 1;
             else if (l.truckStatus === "Full") existing.full += 1;
-            map.set(key, existing);
+            
+            map.set(l.quarryId, existing);
         });
-        return Array.from(map.values()).sort((a, b) => b.total - a.total);
-    }, [filteredLogs]);
 
-    const mostActive = quarrySummaries[0]?.name ?? "—";
+        return Array.from(map.values()).sort((a, b) => {
+            // Secondary sort by name if totals are the same
+            if (b.total !== a.total) return b.total - a.total;
+            return a.name.localeCompare(b.name);
+        });
+    }, [filteredLogs, quarries]);
+
+    const mostActive = quarrySummaries.filter(q => q.total > 0)[0]?.name ?? "";
 
     const reportProps: ReportDocProps = {
         dateLabel,
@@ -326,7 +361,7 @@ export default function Reports() {
                 </div>
                 <Button
                     onClick={() => setShowPdf(true)}
-                    disabled={filteredLogs.length === 0}
+                    disabled={quarrySummaries.length === 0}
                     className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl h-10 text-[13px] font-semibold gap-2 shadow-sm px-5"
                 >
                     <FileText className="w-4 h-4" />
@@ -442,7 +477,7 @@ export default function Reports() {
                     </div>
                     {filteredLogs.length > 0 && (
                         <span className="text-[11px] text-gray-400 font-medium bg-white border border-gray-200 rounded-full px-3 py-1">
-                            {filteredLogs.length} log{filteredLogs.length !== 1 ? "s" : ""}
+                            {filteredLogs.length} truck log{filteredLogs.length !== 1 ? "s" : ""} recorded
                         </span>
                     )}
                 </div>
@@ -493,7 +528,7 @@ export default function Reports() {
                         >
                             <div>
                                 <p className="text-[14px] font-semibold text-gray-800">{q.name}</p>
-                                {i === 0 && (
+                                {q.total > 0 && i === 0 && (
                                     <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
                                         Most Active
                                     </span>
