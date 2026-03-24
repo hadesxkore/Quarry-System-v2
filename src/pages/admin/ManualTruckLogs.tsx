@@ -760,7 +760,13 @@ export default function ManualTruckLogs() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                             {!quarriesLoading && filteredQuarries.map((q, i) => {
                                 const dateKey = format(selectedDate, "yyyy-MM-dd");
-                                const todayLogs = logs.filter(l => l.quarryId === q.id && l.logDateTime?.startsWith(dateKey));
+                                const todayLogs = logs.filter(l => {
+                                    if (l.quarryId !== q.id) return false;
+                                    const dt = l.logDateTime;
+                                    if (!dt) return false;
+                                    const str = typeof dt === "string" ? dt : (dt as { toDate?: () => Date }).toDate?.().toISOString() ?? String(dt);
+                                    return str.startsWith(dateKey);
+                                });
                                 const truckIn = todayLogs.filter(l => l.truckMovement === "Truck In").reduce((a, l) => a + (parseInt(l.truckCount) || 0), 0);
                                 const truckOut = todayLogs.filter(l => l.truckMovement === "Truck Out").reduce((a, l) => a + (parseInt(l.truckCount) || 0), 0);
 

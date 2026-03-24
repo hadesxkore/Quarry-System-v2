@@ -308,6 +308,7 @@ export default function AdminTruckLogs() {
     const [customTo, setCustomTo] = useState("");
     const [filterProponent, setFilterProponent] = useState(""); // quarryId
     const [filterMovement, setFilterMovement] = useState(""); // "Truck In" | "Truck Out"
+    const [filterStatus, setFilterStatus] = useState(""); // "Empty" | "Half Loaded" | "Full" | "No Status"
     const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
     const [showCustom, setShowCustom] = useState(false);
 
@@ -364,6 +365,15 @@ export default function AdminTruckLogs() {
             result = result.filter((l) => l.truckMovement === filterMovement);
         }
 
+        // Truck Status
+        if (filterStatus) {
+            if (filterStatus === "No Status") {
+                result = result.filter((l) => !l.truckStatus || l.truckStatus === "none" || l.truckStatus.trim() === "");
+            } else {
+                result = result.filter((l) => l.truckStatus === filterStatus);
+            }
+        }
+
         // Search
         if (search.trim()) {
             const s = search.toLowerCase();
@@ -383,24 +393,30 @@ export default function AdminTruckLogs() {
         });
 
         return result;
-    }, [logs, datePreset, customFrom, customTo, filterProponent, filterMovement, search, sortOrder]);
+    }, [logs, datePreset, customFrom, customTo, filterProponent, filterMovement, filterStatus, search, sortOrder]);
 
     const totalIn = filtered.reduce((a, l) => l.truckMovement === "Truck In" ? a + (parseInt(l.truckCount) || 0) : a, 0);
     const totalOut = filtered.reduce((a, l) => l.truckMovement === "Truck Out" ? a + (parseInt(l.truckCount) || 0) : a, 0);
     const todayStr = format(new Date(), "yyyy-MM-dd");
-    const todayCount = logs.filter((l) => l.logDateTime?.startsWith(todayStr)).length;
+    const todayCount = logs.filter((l) => {
+        const dt = l.logDateTime;
+        if (!dt) return false;
+        // logDateTime may be a Firestore Timestamp object on imported records
+        const str = typeof dt === "string" ? dt : (dt as { toDate?: () => Date }).toDate?.().toISOString() ?? String(dt);
+        return str.startsWith(todayStr);
+    }).length;
 
     // Active filter count (for badge)
-    const activeFilters = [datePreset !== "all", !!filterProponent, !!filterMovement].filter(Boolean).length;
+    const activeFilters = [datePreset !== "all", !!filterProponent, !!filterMovement, !!filterStatus].filter(Boolean).length;
 
     // ── Pagination (12 rows, resets on any filter change) ─────────────────────
     const pagination = usePagination(filtered, 12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => { pagination.setPage(1); }, [datePreset, customFrom, customTo, filterProponent, filterMovement, search]);
+    useEffect(() => { pagination.setPage(1); }, [datePreset, customFrom, customTo, filterProponent, filterMovement, filterStatus, search]);
 
     function clearAllFilters() {
         setDatePreset("all"); setCustomFrom(""); setCustomTo("");
-        setFilterProponent(""); setFilterMovement(""); setSearch("");
+        setFilterProponent(""); setFilterMovement(""); setFilterStatus(""); setSearch("");
         setShowCustom(false);
     }
 
@@ -506,6 +522,24 @@ export default function AdminTruckLogs() {
                         </SelectContent>
                     </Select>
 
+                    {/* Status filter */}
+                    <Select
+                        value={filterStatus || "__all__"}
+                        onValueChange={(v) => setFilterStatus(v === "__all__" ? "" : v)}
+                    >
+                        <SelectTrigger className="h-9 bg-white border-gray-200 text-[13px] rounded-xl w-[140px] font-medium">
+                            <ChevronDown className="w-3.5 h-3.5 text-gray-400 mr-1" />
+                            <SelectValue placeholder="All Status" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-gray-200 shadow-lg rounded-xl">
+                            <SelectItem value="__all__" className="text-[13px] font-medium py-2.5">All Status</SelectItem>
+                            <SelectItem value="Full" className="text-[13px] font-medium py-2.5">Full</SelectItem>
+                            <SelectItem value="Half Loaded" className="text-[13px] font-medium py-2.5">½ Load</SelectItem>
+                            <SelectItem value="Empty" className="text-[13px] font-medium py-2.5">Empty</SelectItem>
+                            <SelectItem value="No Status" className="text-[13px] font-medium py-2.5 text-orange-600">No Status</SelectItem>
+                        </SelectContent>
+                    </Select>
+
                     {/* Sort toggle */}
                     <button
                         onClick={() => setSortOrder(s => s === "desc" ? "asc" : "desc")}
@@ -591,6 +625,12 @@ export default function AdminTruckLogs() {
                         )}>
                             {filterMovement}
                             <button onClick={() => setFilterMovement("")}><X className="w-3 h-3" /></button>
+                        </span>
+                    )}
+                    {filterStatus && (
+                        <span className="flex items-center gap-1.5 text-[12px] font-semibold rounded-full px-3 py-1.5 border bg-amber-50 text-amber-700 border-amber-200">
+                            {filterStatus}
+                            <button onClick={() => setFilterStatus("")}><X className="w-3 h-3" /></button>
                         </span>
                     )}
                     {datePreset !== "all" && datePreset !== "custom" && (

@@ -48,7 +48,7 @@ type Preset = "this-week" | "this-month" | "this-year" | "custom";
 
 // ── PDF Styles ────────────────────────────────────────────────────────────────
 const pdfStyles = StyleSheet.create({
-    page: { padding: 40, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
+    page: { padding: 40, paddingBottom: 65, fontFamily: "Helvetica", backgroundColor: "#ffffff" },
     headerBar: { backgroundColor: "#0f172a", borderRadius: 8, padding: 24, marginBottom: 24 },
     headerTitle: { fontSize: 20, fontFamily: "Helvetica-Bold", color: "#ffffff", marginBottom: 4 },
     headerSub: { fontSize: 9, color: "#94a3b8", letterSpacing: 1 },
@@ -76,8 +76,8 @@ const pdfStyles = StyleSheet.create({
     tableRowAlt: { flexDirection: "row", padding: "8 10", backgroundColor: "#f8fafc", borderBottom: "1 solid #f1f5f9", alignItems: "center" },
     tdText: { fontSize: 9, color: "#334155" },
     tdBold: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#1e293b" },
-    col1: { flex: 2 },
-    col2: { flex: 1.2 },
+    col1: { flex: 2, paddingRight: 8 },
+    col2: { flex: 1.2, paddingRight: 8 },
     col3: { flex: 0.8, textAlign: "center" },
     col4: { flex: 0.8, textAlign: "center" },
     col5: { flex: 0.8, textAlign: "center" },
@@ -89,12 +89,14 @@ const pdfStyles = StyleSheet.create({
     badge: { fontSize: 8, fontFamily: "Helvetica-Bold", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 },
     badgeIn: { color: "#16a34a", backgroundColor: "#dcfce7" },
     badgeOut: { color: "#2563eb", backgroundColor: "#dbeafe" },
+    badgeInactive: { fontSize: 7, fontFamily: "Helvetica-Bold", color: "#b45309", backgroundColor: "#fef3c7", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 20, alignSelf: "flex-start", marginTop: 4 },
 });
 
 // ── PDF Document ──────────────────────────────────────────────────────────────
 interface QuarrySummary {
     name: string;
     municipality: string;
+    status?: string;       // from quarry record — shown when not Active
     trucksIn: number;
     trucksOut: number;
     total: number;
@@ -111,13 +113,14 @@ interface ReportDocProps {
     totalOut: number;
     totalTrucks: number;
     mostActive: string;
+    activeSiteCount: number;
     quarrySummaries: QuarrySummary[];
     generatedAt: string;
 }
 
 function ReportDocument({
     dateLabel, from, to, totalIn, totalOut, totalTrucks, mostActive,
-    quarrySummaries, generatedAt,
+    activeSiteCount, quarrySummaries, generatedAt,
 }: ReportDocProps) {
     return (
         <Document title="PGB Quarry Truck Log Report">
@@ -161,7 +164,7 @@ function ReportDocument({
                         <Text style={pdfStyles.statLabel}>Total Movements</Text>
                     </View>
                     <View style={[pdfStyles.statCard, pdfStyles.statCardActive]}>
-                        <Text style={[pdfStyles.statNum, pdfStyles.statNumActive]}>{quarrySummaries.length}</Text>
+                        <Text style={[pdfStyles.statNum, pdfStyles.statNumActive]}>{activeSiteCount}</Text>
                         <Text style={pdfStyles.statLabel}>Active Sites</Text>
                     </View>
                 </View>
@@ -174,10 +177,10 @@ function ReportDocument({
                     <Text style={[pdfStyles.thText, pdfStyles.col2]}>Municipality</Text>
                     <Text style={[pdfStyles.thText, pdfStyles.col3]}>In</Text>
                     <Text style={[pdfStyles.thText, pdfStyles.col4]}>Out</Text>
-                    <Text style={[pdfStyles.thText, pdfStyles.col5]}>Total</Text>
-                    <Text style={[pdfStyles.thText, pdfStyles.col6]}>Empty</Text>
-                    <Text style={[pdfStyles.thText, pdfStyles.col7]}>½ Load</Text>
-                    <Text style={[pdfStyles.thText, pdfStyles.col8]}>Full</Text>
+                    <Text style={[pdfStyles.thText, pdfStyles.col5]}>Empty</Text>
+                    <Text style={[pdfStyles.thText, pdfStyles.col6]}>½ Load</Text>
+                    <Text style={[pdfStyles.thText, pdfStyles.col7]}>Full</Text>
+                    <Text style={[pdfStyles.thText, pdfStyles.col8]}>Total</Text>
                 </View>
 
                 {quarrySummaries.length === 0 ? (
@@ -186,14 +189,21 @@ function ReportDocument({
                     </View>
                 ) : quarrySummaries.map((q, i) => (
                     <View key={q.name + i} style={i % 2 === 0 ? pdfStyles.tableRow : pdfStyles.tableRowAlt}>
-                        <Text style={[pdfStyles.tdBold, pdfStyles.col1]}>{q.name}</Text>
-                        <Text style={[pdfStyles.tdText, pdfStyles.col2]}>{q.municipality || "—"}</Text>
+                        <View style={[pdfStyles.col1, { justifyContent: "center" }]}>
+                            <Text style={pdfStyles.tdBold}>{q.name}</Text>
+                            {q.status && q.status !== "Active" && (
+                                <Text style={pdfStyles.badgeInactive}>{q.status.toUpperCase()}</Text>
+                            )}
+                        </View>
+                        <View style={[pdfStyles.col2, { justifyContent: "center" }]}>
+                            <Text style={pdfStyles.tdText}>{q.municipality || "—"}</Text>
+                        </View>
                         <Text style={[pdfStyles.tdText, pdfStyles.col3, { color: "#16a34a", fontFamily: "Helvetica-Bold" }]}>{q.trucksIn}</Text>
                         <Text style={[pdfStyles.tdText, pdfStyles.col4, { color: "#2563eb", fontFamily: "Helvetica-Bold" }]}>{q.trucksOut}</Text>
-                        <Text style={[pdfStyles.tdBold, pdfStyles.col5]}>{q.total}</Text>
-                        <Text style={[pdfStyles.tdText, pdfStyles.col6, { color: "#6b7280" }]}>{q.empty}</Text>
-                        <Text style={[pdfStyles.tdText, pdfStyles.col7, { color: "#d97706" }]}>{q.halfLoaded}</Text>
-                        <Text style={[pdfStyles.tdText, pdfStyles.col8, { color: "#475569", fontFamily: "Helvetica-Bold" }]}>{q.full}</Text>
+                        <Text style={[pdfStyles.tdText, pdfStyles.col5, { color: "#6b7280" }]}>{q.empty}</Text>
+                        <Text style={[pdfStyles.tdText, pdfStyles.col6, { color: "#d97706" }]}>{q.halfLoaded}</Text>
+                        <Text style={[pdfStyles.tdText, pdfStyles.col7, { color: "#475569", fontFamily: "Helvetica-Bold" }]}>{q.full}</Text>
+                        <Text style={[pdfStyles.tdBold, pdfStyles.col8]}>{q.total}</Text>
                     </View>
                 ))}
 
@@ -298,21 +308,39 @@ export default function Reports() {
     // Per-quarry summary
     const quarrySummaries = useMemo<QuarrySummary[]>(() => {
         const map = new Map<string, QuarrySummary>();
-        
-        // Initialize all quarries first with 0 counts
+
+        // nameIndex: normalised proponent name → map key (Firebase quarry id)
+        // Used to merge imported logs whose quarryId is a MongoDB ObjectId rather
+        // than a Firebase doc ID — they share the same quarryName, so we collapse
+        // them into the correct row instead of creating a duplicate.
+        const nameIndex = new Map<string, string>();
+
+        // Pre-fill every registered quarry with 0 counts
         quarries.forEach((q) => {
+            const name = (q.proponent || q.permitNumber || "Unnamed Quarry").trim();
             map.set(q.id, {
-                name: q.proponent || q.permitNumber || "Unnamed Quarry",
+                name,
                 municipality: q.municipality || "",
+                status: q.status || "",
                 trucksIn: 0, trucksOut: 0, total: 0,
                 empty: 0, halfLoaded: 0, full: 0,
             });
+            nameIndex.set(name.toLowerCase(), q.id);
         });
 
         filteredLogs.forEach((l) => {
-            // If the log is from a deleted quarry, we still want to show it, so we fallback to its name or ID
-            const existing = map.get(l.quarryId) ?? {
-                name: l.quarryName || "Unknown",
+            const logName = (l.quarryName || "Unknown").trim();
+
+            // 1. Exact quarryId match (native Firebase logs)
+            // 2. Name-based match (imported logs with MongoDB quarryIds)
+            // 3. Fallback: create a new entry keyed by the log's quarryId
+            const resolvedKey =
+                map.has(l.quarryId)
+                    ? l.quarryId
+                    : (nameIndex.get(logName.toLowerCase()) ?? l.quarryId);
+
+            const existing = map.get(resolvedKey) ?? {
+                name: logName,
                 municipality: l.quarryMunicipality ?? "",
                 trucksIn: 0, trucksOut: 0, total: 0,
                 empty: 0, halfLoaded: 0, full: 0,
@@ -322,22 +350,23 @@ export default function Reports() {
             if (l.truckMovement === "Truck In") existing.trucksIn += count;
             else existing.trucksOut += count;
             existing.total = existing.trucksIn + existing.trucksOut;
-            
-            if (l.truckStatus === "Empty") existing.empty += 1;
-            else if (l.truckStatus === "Half Loaded") existing.halfLoaded += 1;
-            else if (l.truckStatus === "Full") existing.full += 1;
-            
-            map.set(l.quarryId, existing);
+
+            if (l.truckStatus === "Empty") existing.empty += count;
+            else if (l.truckStatus === "Half Loaded") existing.halfLoaded += count;
+            else if (l.truckStatus === "Full") existing.full += count;
+
+            map.set(resolvedKey, existing);
         });
 
         return Array.from(map.values()).sort((a, b) => {
-            // Secondary sort by name if totals are the same
             if (b.total !== a.total) return b.total - a.total;
             return a.name.localeCompare(b.name);
         });
     }, [filteredLogs, quarries]);
 
     const mostActive = quarrySummaries.filter(q => q.total > 0)[0]?.name ?? "";
+    // Only count quarries that are explicitly Active (or have no status — legacy imported logs)
+    const activeSiteCount = quarrySummaries.filter(q => !q.status || q.status === "Active").length;
 
     const reportProps: ReportDocProps = {
         dateLabel,
@@ -345,6 +374,7 @@ export default function Reports() {
         to: format(toDate, "MMM d, yyyy"),
         totalIn, totalOut, totalTrucks,
         mostActive,
+        activeSiteCount,
         quarrySummaries,
         generatedAt: format(new Date(), "MMM d, yyyy h:mm a"),
     };
@@ -450,7 +480,7 @@ export default function Reports() {
                     { label: "Truck In", value: totalIn, icon: <TrendingDown className="w-4 h-4 text-emerald-500" />, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100" },
                     { label: "Truck Out", value: totalOut, icon: <TrendingUp className="w-4 h-4 text-blue-500" />, color: "text-blue-600", bg: "bg-blue-50 border-blue-100" },
                     { label: "Total Movements", value: totalTrucks, icon: <Truck className="w-4 h-4 text-slate-500" />, color: "text-slate-700", bg: "bg-slate-50 border-slate-100" },
-                    { label: "Active Sites", value: quarrySummaries.length, icon: <BarChart3 className="w-4 h-4 text-violet-500" />, color: "text-violet-700", bg: "bg-violet-50 border-violet-100" },
+                    { label: "Active Sites", value: activeSiteCount, icon: <BarChart3 className="w-4 h-4 text-violet-500" />, color: "text-violet-700", bg: "bg-violet-50 border-violet-100" },
                 ].map((stat) => (
                     <motion.div
                         key={stat.label}
@@ -491,10 +521,10 @@ export default function Reports() {
                     <span>Municipality</span>
                     <span className="text-center">In</span>
                     <span className="text-center">Out</span>
-                    <span className="text-center">Total</span>
                     <span className="text-center">Empty</span>
                     <span className="text-center">½ Load</span>
                     <span className="text-center">Full</span>
+                    <span className="text-center">Total</span>
                 </div>
 
                 {/* Loading */}
@@ -528,11 +558,24 @@ export default function Reports() {
                         >
                             <div>
                                 <p className="text-[14px] font-semibold text-gray-800">{q.name}</p>
-                                {q.total > 0 && i === 0 && (
-                                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                                        Most Active
-                                    </span>
-                                )}
+                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                    {q.total > 0 && i === 0 && (
+                                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                                            Most Active
+                                        </span>
+                                    )}
+                                    {q.status && q.status !== "Active" && (
+                                        <span className={cn(
+                                            "text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
+                                            q.status === "Expired"   && "text-gray-500 bg-gray-100 border-gray-200",
+                                            q.status === "Pending"   && "text-amber-700 bg-amber-50 border-amber-200",
+                                            q.status === "Suspended" && "text-orange-700 bg-orange-50 border-orange-200",
+                                            q.status === "Revoked"   && "text-red-600 bg-red-50 border-red-200",
+                                        )}>
+                                            {q.status}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                             <span className="text-[13px] text-gray-500">{q.municipality || "—"}</span>
                             <div className="text-center">
@@ -542,9 +585,6 @@ export default function Reports() {
                                 <span className="text-[14px] font-bold text-blue-600">{q.trucksOut}</span>
                             </div>
                             <div className="text-center">
-                                <span className="text-[15px] font-bold text-gray-800">{q.total}</span>
-                            </div>
-                            <div className="text-center">
                                 <span className="text-[13px] font-semibold text-gray-400">{q.empty}</span>
                             </div>
                             <div className="text-center">
@@ -552,6 +592,9 @@ export default function Reports() {
                             </div>
                             <div className="text-center">
                                 <span className="text-[13px] font-semibold text-slate-700">{q.full}</span>
+                            </div>
+                            <div className="text-center">
+                                <span className="text-[15px] font-bold text-gray-800">{q.total}</span>
                             </div>
                         </motion.div>
                     ))}
