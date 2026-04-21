@@ -1,7 +1,7 @@
 // Firebase configuration
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
 export const firebaseConfig = {
     apiKey: "AIzaSyD5tHrEnxa5ng5RYND77DIOWk5EeTJDimw",
@@ -17,4 +17,19 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Enable auth persistence (keeps users logged in)
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+    console.error("Auth persistence error:", error);
+});
+
+// Enable offline persistence for Firestore
+enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+        console.warn('Multiple tabs open, persistence enabled in first tab only');
+    } else if (err.code === 'unimplemented') {
+        console.warn('Browser doesn\'t support offline persistence');
+    }
+});
+
 export default app;

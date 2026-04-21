@@ -8,12 +8,13 @@ import {
     Dialog, DialogContent,
 } from "@/components/ui/dialog";
 import {
-    TrendingDown, TrendingUp, Scan, Loader2, AlertCircle, QrCode, X,
+    TrendingDown, TrendingUp, Scan, Loader2, AlertCircle, QrCode, X, Wifi, WifiOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Html5Qrcode } from "html5-qrcode";
 import { sileo } from "sileo";
 import UserAppLayout from "@/components/UserAppLayout";
+import { offlineQueue } from "@/lib/offlineQueue";
 
 interface TruckLog {
     id: string;
@@ -42,6 +43,57 @@ export default function UserDashboard() {
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
     const [showInstallButton, setShowInstallButton] = useState(false);
     const [bannerDismissed, setBannerDismissed] = useState(false);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    const [pendingCount, setPendingCount] = useState(0);
+
+    // Monitor online/offline status
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    // Process offline queue when back online
+    useEffect(() => {
+        if (isOnline && userProfile?.uid) {
+            processOfflineQueue();
+        }
+    }, [isOnline, userProfile?.uid]);
+
+    // Update pending count
+    useEffect(() => {
+        setPendingCount(offlineQueue.count());
+    }, [logs]);
+
+    async function processOfflineQueue() {
+        const queue = offlineQueue.getAll();
+        if (queue.length === 0) return;
+
+        for (const item of queue) {
+            try {
+                await addDoc(collection(db, "userTruckLogs"), item.data);
+                offlineQueue.remove(item.id);
+                setPendingCount(offlineQueue.count());
+            } catch (err) {
+                console.error('Failed to sync offline log:', err);
+                break; // Stop processing if one fails
+            }
+        }
+
+        if (offlineQueue.count() === 0) {
+            sileo.success({
+                title: "Synced!",
+                description: "All offline logs have been uploaded",
+            });
+        }
+    }
 
     // Listen for PWA install prompt
     useEffect(() => {
@@ -125,6 +177,41 @@ export default function UserDashboard() {
     return (
         <UserAppLayout onScanClick={() => setScannerOpen(true)}>
             <div className="p-5 space-y-5 max-w-2xl mx-auto">
+                {/* Offline/Pending Sync Banner */}
+                {(!isOnline || pendingCount > 0) && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={cn(
+                            "rounded-2xl p-4 shadow-lg",
+                            !isOnline 
+                                ? "bg-gradient-to-r from-orange-500 to-orange-600" 
+                                : "bg-gradient-to-r from-blue-500 to-blue-600"
+                        )}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+                                {!isOnline ? (
+                                    <WifiOff className="w-5 h-5 text-white" />
+                                ) : (
+                                    <Wifi className="w-5 h-5 text-white animate-pulse" />
+                                )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[14px] font-bold text-white">
+                                    {!isOnline ? "Offline Mode" : "Syncing..."}
+                                </p>
+                                <p className="text-[11px] text-white/90">
+                                    {!isOnline 
+                                        ? "Logs will be saved and uploaded when online" 
+                                        : `Uploading ${pendingCount} pending log${pendingCount !== 1 ? 's' : ''}...`
+                                    }
+                                </p>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+
                 {/* Install App Banner */}
                 {showInstallButton && (
                     <motion.div
@@ -307,6 +394,7 @@ export default function UserDashboard() {
                 open={quickLogOpen}
                 quarry={scannedQuarry}
                 userProfile={userProfile}
+                isOnline={isOnline}
                 onClose={() => {
                     setQuickLogOpen(false);
                     setScannedQuarry(null);
@@ -314,6 +402,7 @@ export default function UserDashboard() {
                 onSuccess={() => {
                     setQuickLogOpen(false);
                     setShowSuccess(true);
+                    setPendingCount(offlineQueue.count());
                     setTimeout(() => setShowSuccess(false), 3000);
                 }}
             />
@@ -550,12 +639,14 @@ function QuickLogModal({
     open,
     quarry,
     userProfile,
+    isOnline,
     onClose,
     onSuccess,
 }: {
     open: boolean;
     quarry: { quarryId: string; quarryName: string; quarryMunicipality: string } | null;
     userProfile: any;
+    isOnline: boolean;
     onClose: () => void;
     onSuccess: () => void;
 }) {
@@ -576,7 +667,7 @@ function QuickLogModal({
             setSubmitting(true);
             const now = format(new Date(), "yyyy-MM-dd'T'HH:mm");
             
-            await addDoc(collection(db, "userTruckLogs"), {
+            const logData = {
                 quarryId: quarry.quarryId,
                 quarryName: quarry.quarryName,
                 quarryMunicipality: quarry.quarryMunicipality,
@@ -587,17 +678,52 @@ function QuickLogModal({
                 truckCount: "1",
                 logDateTime: now,
                 createdAt: serverTimestamp(),
-            });
+            };
+
+            if (isOnline) {
+                // Online: Submit directly
+                await addDoc(collection(db, "userTruckLogs"), logData);
+            } else {
+                // Offline: Queue for later
+                offlineQueue.add(logData);
+                sileo.info({
+                    title: "Saved offline",
+                    description: "Log will be uploaded when you're back online",
+                });
+            }
 
             setSubmitting(false); // Reset before calling onSuccess
             onSuccess();
         } catch (err) {
             console.error(err);
             setSubmitting(false); // Reset on error
-            sileo.error({
-                title: "Failed to submit",
-                description: "Please try again",
-            });
+            
+            // If online submission fails, queue it
+            if (isOnline) {
+                const logData = {
+                    quarryId: quarry.quarryId,
+                    quarryName: quarry.quarryName,
+                    quarryMunicipality: quarry.quarryMunicipality,
+                    submittedByUid: userProfile?.uid || "",
+                    submittedByUsername: userProfile?.username || "",
+                    truckMovement,
+                    truckStatus: truckMovement === "Truck In" ? "Empty" : "Full",
+                    truckCount: "1",
+                    logDateTime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+                    createdAt: serverTimestamp(),
+                };
+                offlineQueue.add(logData);
+                sileo.warning({
+                    title: "Saved offline",
+                    description: "Network error. Log will be uploaded later.",
+                });
+                onSuccess();
+            } else {
+                sileo.error({
+                    title: "Failed to save",
+                    description: "Please try again",
+                });
+            }
         }
     }
 
