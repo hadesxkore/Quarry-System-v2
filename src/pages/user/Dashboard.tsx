@@ -36,6 +36,39 @@ export default function UserDashboard() {
         quarryName: string;
         quarryMunicipality: string;
     } | null>(null);
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    const [showInstallButton, setShowInstallButton] = useState(false);
+
+    // Listen for PWA install prompt
+    useEffect(() => {
+        const handler = (e: any) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+            setShowInstallButton(true);
+        };
+        
+        window.addEventListener('beforeinstallprompt', handler);
+        
+        // Check if already installed
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            setShowInstallButton(false);
+        }
+        
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+    }, []);
+
+    const handleInstallClick = async () => {
+        if (!deferredPrompt) return;
+        
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        
+        if (outcome === 'accepted') {
+            setShowInstallButton(false);
+        }
+        
+        setDeferredPrompt(null);
+    };
 
     useEffect(() => {
         if (!userProfile?.quarryId) { setLoading(false); return; }
@@ -66,6 +99,43 @@ export default function UserDashboard() {
     return (
         <UserAppLayout onScanClick={() => setScannerOpen(true)}>
             <div className="p-5 space-y-5 max-w-2xl mx-auto">
+                {/* Install App Banner */}
+                {showInstallButton && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-2xl p-4 shadow-lg"
+                    >
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+                                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                    </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[14px] font-bold text-white">Install App</p>
+                                    <p className="text-[11px] text-purple-100">Add to home screen for quick access</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={handleInstallClick}
+                                    className="px-4 py-2 rounded-xl bg-white text-purple-600 text-[13px] font-bold hover:bg-purple-50 transition-colors"
+                                >
+                                    Install
+                                </button>
+                                <button
+                                    onClick={() => setShowInstallButton(false)}
+                                    className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+
                 {/* Welcome Card */}
                 <motion.div
                     initial={{ opacity: 0, y: 8 }}
@@ -164,6 +234,35 @@ export default function UserDashboard() {
                         Tap the purple button to scan QR code
                     </p>
                 </div>
+
+                {/* Install Instructions (only show if not installed and no install button) */}
+                {!showInstallButton && !window.matchMedia('(display-mode: standalone)').matches && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
+                        <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center shrink-0">
+                                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-[13px] font-bold text-blue-900 mb-1">Install as App</p>
+                                <p className="text-[12px] text-blue-700 mb-2">
+                                    For the best experience, install this app on your device:
+                                </p>
+                                <ul className="text-[11px] text-blue-600 space-y-1">
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-blue-500 mt-0.5">•</span>
+                                        <span><strong>Chrome/Edge:</strong> Tap menu (⋮) → "Install app" or "Add to Home screen"</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-blue-500 mt-0.5">•</span>
+                                        <span><strong>Safari:</strong> Tap share (□↑) → "Add to Home Screen"</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* QR Scanner Modal */}
