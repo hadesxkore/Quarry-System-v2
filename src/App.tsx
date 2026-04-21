@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import LoadingScreen from "@/components/LoadingScreen";
 import { useState, useEffect } from "react";
@@ -20,6 +20,24 @@ import UsersManagement from "@/pages/admin/UsersManagement";
 // User pages (standalone with built-in navigation)
 import UserDashboard from "@/pages/user/Dashboard";
 import UserLogHistory from "@/pages/user/LogHistory";
+
+// Smart redirect component
+function RootRedirect() {
+  const { currentUser, userProfile, loading } = useAuth();
+  
+  if (loading) {
+    return <LoadingScreen />;
+  }
+  
+  if (currentUser && userProfile) {
+    if (userProfile.role === "admin") {
+      return <Navigate to="/admin/dashboard" replace />;
+    }
+    return <Navigate to="/user/dashboard" replace />;
+  }
+  
+  return <Navigate to="/login" replace />;
+}
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -84,9 +102,9 @@ function App() {
             />
           </Route>
 
-          {/* ── Fallback ── */}
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          {/* ── Fallback - Smart redirect based on auth status ── */}
+          <Route path="/" element={<RootRedirect />} />
+          <Route path="*" element={<RootRedirect />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

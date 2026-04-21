@@ -22,9 +22,35 @@ export default function LoginPage() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [focusedField, setFocusedField] = useState<"username" | "password" | null>(null);
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-    const { login } = useAuth();
+    const { login, currentUser, userProfile } = useAuth();
     const navigate = useNavigate();
+
+    // Redirect if already logged in
+    useEffect(() => {
+        if (currentUser && userProfile) {
+            if (userProfile.role === "admin") {
+                navigate("/admin/dashboard", { replace: true });
+            } else {
+                navigate("/user/dashboard", { replace: true });
+            }
+        }
+    }, [currentUser, userProfile, navigate]);
+
+    // Monitor online/offline status
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
 
     // Load saved credentials on mount
     useEffect(() => {
@@ -43,6 +69,13 @@ export default function LoginPage() {
             setError("Please fill in all fields.");
             return;
         }
+        
+        // Check if offline
+        if (!navigator.onLine) {
+            setError("No internet connection. Please connect to login.");
+            return;
+        }
+        
         try {
             setError("");
             setLoading(true);
@@ -66,7 +99,11 @@ export default function LoginPage() {
             }
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : "Login failed.";
-            if (
+            
+            // Check if it's a network error
+            if (message.includes("network") || message.includes("fetch") || !navigator.onLine) {
+                setError("No internet connection. Please check your network and try again.");
+            } else if (
                 message.includes("wrong-password") ||
                 message.includes("user-not-found") ||
                 message.includes("Invalid username") ||
@@ -76,7 +113,7 @@ export default function LoginPage() {
             } else if (message.includes("too-many-requests")) {
                 setError("Too many attempts. Please try again later.");
             } else {
-                setError("Login failed. Please check your credentials.");
+                setError("Login failed. Please check your credentials and internet connection.");
             }
         } finally {
             setLoading(false);
@@ -126,6 +163,18 @@ export default function LoginPage() {
                             <p className="text-[12px] text-gray-400 tracking-widest font-medium uppercase">
                                 Monitoring System
                             </p>
+                            
+                            {/* Offline Warning */}
+                            {!isOnline && (
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="mt-4 flex items-center justify-center gap-2 text-orange-600 text-[12px] bg-orange-50 border border-orange-200 rounded-lg px-3 py-2"
+                                >
+                                    <AlertCircle className="w-3.5 h-3.5" />
+                                    <span className="font-medium">No internet connection</span>
+                                </motion.div>
+                            )}
                         </motion.div>
 
                         {/* Form */}
@@ -253,7 +302,7 @@ export default function LoginPage() {
                             <motion.div whileTap={{ scale: 0.995 }} className="pt-1">
                                 <Button
                                     type="submit"
-                                    disabled={loading}
+                                    disabled={loading || !isOnline}
                                     className={cn(
                                         "w-full h-11 rounded-xl text-[14px] font-medium",
                                         "bg-slate-900 text-white hover:bg-slate-800",
@@ -266,6 +315,8 @@ export default function LoginPage() {
                                             <Loader2 className="w-4 h-4 animate-spin" />
                                             Signing in...
                                         </span>
+                                    ) : !isOnline ? (
+                                        "No Internet Connection"
                                     ) : "Sign In"}
                                 </Button>
                             </motion.div>
