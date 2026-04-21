@@ -1,18 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, EyeOff, User, Lock, MountainSnow, AlertCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+const REMEMBER_ME_KEY = 'pgb_remember_me';
+const SAVED_USERNAME_KEY = 'pgb_saved_username';
+
 export default function LoginPage() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const [rememberMe, setRememberMe] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
@@ -20,6 +25,17 @@ export default function LoginPage() {
 
     const { login } = useAuth();
     const navigate = useNavigate();
+
+    // Load saved credentials on mount
+    useEffect(() => {
+        const savedRememberMe = localStorage.getItem(REMEMBER_ME_KEY) === 'true';
+        const savedUsername = localStorage.getItem(SAVED_USERNAME_KEY);
+        
+        if (savedRememberMe && savedUsername) {
+            setUsername(savedUsername);
+            setRememberMe(true);
+        }
+    }, []);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -30,6 +46,16 @@ export default function LoginPage() {
         try {
             setError("");
             setLoading(true);
+            
+            // Save credentials if remember me is checked
+            if (rememberMe) {
+                localStorage.setItem(REMEMBER_ME_KEY, 'true');
+                localStorage.setItem(SAVED_USERNAME_KEY, username.trim());
+            } else {
+                localStorage.removeItem(REMEMBER_ME_KEY);
+                localStorage.removeItem(SAVED_USERNAME_KEY);
+            }
+            
             const cred = await login(username.trim(), password);
             const profileDoc = await getDoc(doc(db, "users", cred.user.uid));
             const role = profileDoc.exists() ? profileDoc.data().role : null;
@@ -205,6 +231,23 @@ export default function LoginPage() {
                                     </motion.div>
                                 )}
                             </AnimatePresence>
+
+                            {/* Remember Me */}
+                            <div className="flex items-center gap-2 pt-1">
+                                <Checkbox
+                                    id="remember"
+                                    checked={rememberMe}
+                                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                                    disabled={loading}
+                                    className="border-gray-300 data-[state=checked]:bg-slate-900 data-[state=checked]:border-slate-900"
+                                />
+                                <label
+                                    htmlFor="remember"
+                                    className="text-[13px] text-gray-600 cursor-pointer select-none"
+                                >
+                                    Remember my username
+                                </label>
+                            </div>
 
                             {/* Submit */}
                             <motion.div whileTap={{ scale: 0.995 }} className="pt-1">
