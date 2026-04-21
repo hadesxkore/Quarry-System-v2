@@ -765,10 +765,10 @@ function QRScannerModal({
 
                 <div className="px-6 py-6 space-y-4">
                     {/* Scanner with modern loading */}
-                    <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-900">
+                    <div className="relative w-full rounded-2xl overflow-hidden bg-gray-900" style={{ minHeight: '400px', maxHeight: '70vh' }}>
                         <div
                             id={readerIdRef.current}
-                            className="w-full h-full"
+                            className="w-full h-full min-h-[400px]"
                         />
                         {!scanning && !error && (
                             <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-blue-600/20 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
