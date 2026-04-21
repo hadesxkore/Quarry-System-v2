@@ -37,6 +37,9 @@ interface TruckLog {
     logDateTime: string;
     imageUrl?: string;
     createdAt?: unknown;
+    quarryId?: string;
+    quarryName?: string;
+    quarryMunicipality?: string;
 }
 
 const movementStyle: Record<string, string> = {
@@ -102,17 +105,17 @@ export default function UserLogHistory() {
     const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
 
     useEffect(() => {
-        if (!userProfile?.quarryId) { setLoading(false); return; }
+        if (!userProfile?.uid) { setLoading(false); return; }
         const q = query(
             collection(db, "userTruckLogs"),
-            where("quarryId", "==", userProfile.quarryId),
+            where("submittedByUid", "==", userProfile.uid),
             orderBy("createdAt", "desc")
         );
         return onSnapshot(q, (snap) => {
             setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TruckLog)));
             setLoading(false);
         });
-    }, [userProfile?.quarryId]);
+    }, [userProfile?.uid]);
 
     // Filtered + sorted
     const filtered = useMemo(() => {
@@ -194,7 +197,7 @@ export default function UserLogHistory() {
             <div>
                 <h1 className="text-[22px] font-bold text-gray-900 tracking-tight">My Logs</h1>
                 <p className="text-[14px] text-gray-400 mt-0.5">
-                    {userProfile?.quarryName ?? "Your quarry"} · All recorded truck movements
+                    All your recorded truck movements
                 </p>
             </div>
 
@@ -489,21 +492,40 @@ export default function UserLogHistory() {
                             </div>
 
                             {/* Info row */}
-                            <div className="mt-3 flex items-center gap-3 flex-wrap">
-                                <div className="flex items-center gap-1.5">
-                                    <Truck className="w-3.5 h-3.5 text-gray-400" />
-                                    <span className="text-[15px] font-bold text-gray-800">
-                                        {log.truckCount} truck{parseInt(log.truckCount) !== 1 ? "s" : ""}
-                                    </span>
-                                </div>
-                                {log.truckStatus && (
-                                    <span className={cn(
-                                        "text-[12px] font-bold px-2.5 py-1 rounded-full border",
-                                        statusStyle[log.truckStatus] ?? "text-gray-500 bg-gray-100 border-gray-200"
-                                    )}>
-                                        {log.truckStatus}
-                                    </span>
+                            <div className="mt-3 space-y-2">
+                                {/* Quarry name */}
+                                {log.quarryName && (
+                                    <div className="flex items-center gap-1.5">
+                                        <svg className="w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                        </svg>
+                                        <span className="text-[13px] font-semibold text-gray-700">
+                                            {log.quarryName}
+                                        </span>
+                                        {log.quarryMunicipality && (
+                                            <span className="text-[12px] text-gray-400">
+                                                · {log.quarryMunicipality}
+                                            </span>
+                                        )}
+                                    </div>
                                 )}
+                                
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <div className="flex items-center gap-1.5">
+                                        <Truck className="w-3.5 h-3.5 text-gray-400" />
+                                        <span className="text-[15px] font-bold text-gray-800">
+                                            {log.truckCount} truck{parseInt(log.truckCount) !== 1 ? "s" : ""}
+                                        </span>
+                                    </div>
+                                    {log.truckStatus && (
+                                        <span className={cn(
+                                            "text-[12px] font-bold px-2.5 py-1 rounded-full border",
+                                            statusStyle[log.truckStatus] ?? "text-gray-500 bg-gray-100 border-gray-200"
+                                        )}>
+                                            {log.truckStatus}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Date */}
@@ -864,6 +886,7 @@ function QuickLogModal({
     useEffect(() => {
         if (!open) {
             setTruckMovement("");
+            setSubmitting(false); // Reset submitting state when modal closes
         }
     }, [open]);
 
@@ -887,14 +910,15 @@ function QuickLogModal({
                 createdAt: serverTimestamp(),
             });
 
+            setSubmitting(false); // Reset before calling onSuccess
             onSuccess();
         } catch (err) {
             console.error(err);
+            setSubmitting(false); // Reset on error
             sileo.error({
                 title: "Failed to submit",
                 description: "Please try again",
             });
-            setSubmitting(false);
         }
     }
 

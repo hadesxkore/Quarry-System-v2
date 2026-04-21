@@ -22,6 +22,9 @@ interface TruckLog {
     truckCount: string;
     logDateTime: string;
     imageUrl?: string;
+    quarryId?: string;
+    quarryName?: string;
+    quarryMunicipality?: string;
 }
 
 export default function UserDashboard() {
@@ -71,17 +74,17 @@ export default function UserDashboard() {
     };
 
     useEffect(() => {
-        if (!userProfile?.quarryId) { setLoading(false); return; }
+        if (!userProfile?.uid) { setLoading(false); return; }
         const q = query(
             collection(db, "userTruckLogs"),
-            where("quarryId", "==", userProfile.quarryId),
+            where("submittedByUid", "==", userProfile.uid),
             orderBy("createdAt", "desc")
         );
         return onSnapshot(q, (snap) => {
             setLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as TruckLog)));
             setLoading(false);
         });
-    }, [userProfile?.quarryId]);
+    }, [userProfile?.uid]);
 
     const todayStr = format(new Date(), "yyyy-MM-dd");
     const todayLogs = logs.filter((l) => l.logDateTime?.startsWith(todayStr));
@@ -539,6 +542,7 @@ function QuickLogModal({
     useEffect(() => {
         if (!open) {
             setTruckMovement("");
+            setSubmitting(false); // Reset submitting state when modal closes
         }
     }, [open]);
 
@@ -562,14 +566,15 @@ function QuickLogModal({
                 createdAt: serverTimestamp(),
             });
 
+            setSubmitting(false); // Reset before calling onSuccess
             onSuccess();
         } catch (err) {
             console.error(err);
+            setSubmitting(false); // Reset on error
             sileo.error({
                 title: "Failed to submit",
                 description: "Please try again",
             });
-            setSubmitting(false);
         }
     }
 
