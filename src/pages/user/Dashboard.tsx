@@ -668,8 +668,9 @@ function QuickLogModal({
     async function handleSubmit() {
         if (!truckMovement || !quarry) return;
 
+        setSubmitting(true);
+
         try {
-            setSubmitting(true);
             const now = format(new Date(), "yyyy-MM-dd'T'HH:mm");
             
             const logData = {
@@ -684,56 +685,69 @@ function QuickLogModal({
                 logDateTime: now,
             };
 
-            if (isOnline) {
-                // Online: Submit directly with serverTimestamp
+            if (!isOnline) {
+                // Offline: Save to queue immediately (synchronous)
+                try {
+                    offlineQueue.add({
+                        ...logData,
+                        createdAt: new Date().toISOString(),
+                    });
+                    setSubmitting(false);
+                    onSuccess();
+                    sileo.info({
+                        title: "Saved offline",
+                        description: "Log will be uploaded when you're back online",
+                    });
+                    return;
+                } catch (queueError) {
+                    console.error("Queue error:", queueError);
+                    setSubmitting(false);
+                    sileo.error({
+                        title: "Failed to save",
+                        description: "Could not save offline. Please try again.",
+                    });
+                    return;
+                }
+            }
+
+            // Online: Submit to Firebase
+            try {
                 await addDoc(collection(db, "userTruckLogs"), {
                     ...logData,
                     createdAt: serverTimestamp(),
                 });
-            } else {
-                // Offline: Queue with current timestamp (will be replaced with serverTimestamp when synced)
-                offlineQueue.add({
-                    ...logData,
-                    createdAt: new Date().toISOString(), // Use ISO string for offline
-                });
-                sileo.info({
-                    title: "Saved offline",
-                    description: "Log will be uploaded when you're back online",
-                });
-            }
-
-            setSubmitting(false); // Reset before calling onSuccess
-            onSuccess();
-        } catch (err) {
-            console.error(err);
-            setSubmitting(false); // Reset on error
-            
-            // If online submission fails, queue it
-            if (isOnline) {
-                const logData = {
-                    quarryId: quarry.quarryId,
-                    quarryName: quarry.quarryName,
-                    quarryMunicipality: quarry.quarryMunicipality,
-                    submittedByUid: userProfile?.uid || "",
-                    submittedByUsername: userProfile?.username || "",
-                    truckMovement,
-                    truckStatus: truckMovement === "Truck In" ? "Empty" : "Full",
-                    truckCount: "1",
-                    logDateTime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
-                    createdAt: new Date().toISOString(),
-                };
-                offlineQueue.add(logData);
-                sileo.warning({
-                    title: "Saved offline",
-                    description: "Network error. Log will be uploaded later.",
-                });
+                setSubmitting(false);
                 onSuccess();
-            } else {
-                sileo.error({
-                    title: "Failed to save",
-                    description: "Please try again",
-                });
+            } catch (err) {
+                console.error("Firebase error:", err);
+                // If Firebase fails, queue it offline
+                try {
+                    offlineQueue.add({
+                        ...logData,
+                        createdAt: new Date().toISOString(),
+                    });
+                    setSubmitting(false);
+                    onSuccess();
+                    sileo.warning({
+                        title: "Saved offline",
+                        description: "Network error. Log will be uploaded later.",
+                    });
+                } catch (queueError) {
+                    console.error("Queue error:", queueError);
+                    setSubmitting(false);
+                    sileo.error({
+                        title: "Failed to submit",
+                        description: "Please try again",
+                    });
+                }
             }
+        } catch (err) {
+            console.error("Unexpected error:", err);
+            setSubmitting(false);
+            sileo.error({
+                title: "Error",
+                description: "Something went wrong. Please try again.",
+            });
         }
     }
 

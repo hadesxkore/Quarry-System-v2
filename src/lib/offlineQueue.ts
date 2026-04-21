@@ -10,17 +10,23 @@ const QUEUE_KEY = 'offline_log_queue';
 export const offlineQueue = {
   // Add log to queue
   add(logData: any): string {
-    const queue = this.getAll();
-    const id = `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    queue.push({
-      id,
-      data: logData,
-      timestamp: Date.now(),
-    });
-    
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-    return id;
+    try {
+      const queue = this.getAll();
+      const id = `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      queue.push({
+        id,
+        data: logData,
+        timestamp: Date.now(),
+      });
+      
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+      console.log('✅ Log added to offline queue:', id);
+      return id;
+    } catch (error) {
+      console.error('❌ Failed to add to offline queue:', error);
+      throw error;
+    }
   },
 
   // Get all queued logs
@@ -28,20 +34,31 @@ export const offlineQueue = {
     try {
       const stored = localStorage.getItem(QUEUE_KEY);
       return stored ? JSON.parse(stored) : [];
-    } catch {
+    } catch (error) {
+      console.error('❌ Failed to read offline queue:', error);
       return [];
     }
   },
 
   // Remove log from queue
   remove(id: string): void {
-    const queue = this.getAll().filter(item => item.id !== id);
-    localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    try {
+      const queue = this.getAll().filter(item => item.id !== id);
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+      console.log('✅ Log removed from offline queue:', id);
+    } catch (error) {
+      console.error('❌ Failed to remove from offline queue:', error);
+    }
   },
 
   // Clear all queued logs
   clear(): void {
-    localStorage.removeItem(QUEUE_KEY);
+    try {
+      localStorage.removeItem(QUEUE_KEY);
+      console.log('✅ Offline queue cleared');
+    } catch (error) {
+      console.error('❌ Failed to clear offline queue:', error);
+    }
   },
 
   // Get count of queued logs
