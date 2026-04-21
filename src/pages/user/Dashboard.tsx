@@ -243,19 +243,31 @@ function QRScannerModal({
 
     useEffect(() => {
         if (open) {
-            startScanner();
+            // Small delay to ensure DOM is ready
+            const timer = setTimeout(() => {
+                startScanner();
+            }, 100);
+            return () => {
+                clearTimeout(timer);
+                stopScanner();
+            };
         } else {
             stopScanner();
         }
-        return () => {
-            stopScanner();
-        };
     }, [open]);
 
     async function startScanner() {
         try {
             setScanning(true);
             setError("");
+            
+            // Check if element exists
+            const element = document.getElementById(readerIdRef.current);
+            if (!element) {
+                setError("Scanner element not found. Please try again.");
+                setScanning(false);
+                return;
+            }
             
             const scanner = new Html5Qrcode(readerIdRef.current);
             scannerRef.current = scanner;
