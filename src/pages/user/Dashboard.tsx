@@ -41,6 +41,7 @@ export default function UserDashboard() {
     } | null>(null);
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
     const [showInstallButton, setShowInstallButton] = useState(false);
+    const [bannerDismissed, setBannerDismissed] = useState(false);
 
     // Listen for PWA install prompt
     useEffect(() => {
@@ -60,6 +61,18 @@ export default function UserDashboard() {
         return () => window.removeEventListener('beforeinstallprompt', handler);
     }, []);
 
+    // Re-show banner every 3 minutes if dismissed
+    useEffect(() => {
+        if (bannerDismissed && deferredPrompt && !window.matchMedia('(display-mode: standalone)').matches) {
+            const timer = setTimeout(() => {
+                setShowInstallButton(true);
+                setBannerDismissed(false);
+            }, 3 * 60 * 1000); // 3 minutes
+            
+            return () => clearTimeout(timer);
+        }
+    }, [bannerDismissed, deferredPrompt]);
+
     const handleInstallClick = async () => {
         if (!deferredPrompt) return;
         
@@ -68,9 +81,19 @@ export default function UserDashboard() {
         
         if (outcome === 'accepted') {
             setShowInstallButton(false);
+            setBannerDismissed(false);
+        } else {
+            // User declined, hide for now but will reappear in 3 minutes
+            setShowInstallButton(false);
+            setBannerDismissed(true);
         }
         
         setDeferredPrompt(null);
+    };
+
+    const handleDismissBanner = () => {
+        setShowInstallButton(false);
+        setBannerDismissed(true);
     };
 
     useEffect(() => {
@@ -129,7 +152,7 @@ export default function UserDashboard() {
                                     Install
                                 </button>
                                 <button
-                                    onClick={() => setShowInstallButton(false)}
+                                    onClick={handleDismissBanner}
                                     className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-colors"
                                 >
                                     <X className="w-4 h-4" />
