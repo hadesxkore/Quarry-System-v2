@@ -78,7 +78,12 @@ export default function UserDashboard() {
 
         for (const item of queue) {
             try {
-                await addDoc(collection(db, "userTruckLogs"), item.data);
+                // Replace ISO string timestamp with serverTimestamp when uploading
+                const { createdAt, ...logData } = item.data;
+                await addDoc(collection(db, "userTruckLogs"), {
+                    ...logData,
+                    createdAt: serverTimestamp(), // Use server timestamp when syncing
+                });
                 offlineQueue.remove(item.id);
                 setPendingCount(offlineQueue.count());
             } catch (err) {
@@ -677,15 +682,20 @@ function QuickLogModal({
                 truckStatus: truckMovement === "Truck In" ? "Empty" : "Full",
                 truckCount: "1",
                 logDateTime: now,
-                createdAt: serverTimestamp(),
             };
 
             if (isOnline) {
-                // Online: Submit directly
-                await addDoc(collection(db, "userTruckLogs"), logData);
+                // Online: Submit directly with serverTimestamp
+                await addDoc(collection(db, "userTruckLogs"), {
+                    ...logData,
+                    createdAt: serverTimestamp(),
+                });
             } else {
-                // Offline: Queue for later
-                offlineQueue.add(logData);
+                // Offline: Queue with current timestamp (will be replaced with serverTimestamp when synced)
+                offlineQueue.add({
+                    ...logData,
+                    createdAt: new Date().toISOString(), // Use ISO string for offline
+                });
                 sileo.info({
                     title: "Saved offline",
                     description: "Log will be uploaded when you're back online",
@@ -710,7 +720,7 @@ function QuickLogModal({
                     truckStatus: truckMovement === "Truck In" ? "Empty" : "Full",
                     truckCount: "1",
                     logDateTime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
-                    createdAt: serverTimestamp(),
+                    createdAt: new Date().toISOString(),
                 };
                 offlineQueue.add(logData);
                 sileo.warning({
