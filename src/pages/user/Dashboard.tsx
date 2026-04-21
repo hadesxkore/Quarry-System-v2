@@ -710,35 +710,76 @@ function QuickLogModal({
                 }
             }
 
-            // Online: Submit to Firebase
+            // Online: Try to submit with timeout
             try {
-                await addDoc(collection(db, "userTruckLogs"), {
-                    ...logData,
-                    createdAt: serverTimestamp(),
+                // Create a timeout promise (3 seconds)
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('timeout')), 3000);
                 });
+
+                // Race between Firebase submission and timeout
+                await Promise.race([
+                    addDoc(collection(db, "userTruckLogs"), {
+                        ...logData,
+                        createdAt: serverTimestamp(),
+                    }),
+                    timeoutPromise
+                ]);
+
+                // Success!
                 setSubmitting(false);
                 onSuccess();
-            } catch (err) {
+            } catch (err: any) {
                 console.error("Firebase error:", err);
-                // If Firebase fails, queue it offline
-                try {
-                    offlineQueue.add({
-                        ...logData,
-                        createdAt: new Date().toISOString(),
-                    });
-                    setSubmitting(false);
-                    onSuccess();
-                    sileo.warning({
-                        title: "Saved offline",
-                        description: "Network error. Log will be uploaded later.",
-                    });
-                } catch (queueError) {
-                    console.error("Queue error:", queueError);
-                    setSubmitting(false);
-                    sileo.error({
-                        title: "Failed to submit",
-                        description: "Please try again",
-                    });
+                
+                // Check if it's a timeout or network error
+                const isTimeout = err.message === 'timeout';
+                const isNetworkError = err.message?.includes('network') || err.message?.includes('fetch');
+                
+                if (isTimeout || isNetworkError) {
+                    // Slow/weak connection - save offline automatically
+                    try {
+                        offlineQueue.add({
+                            ...logData,
+                            createdAt: new Date().toISOString(),
+                        });
+                        setSubmitting(false);
+                        onSuccess();
+                        sileo.warning({
+                            title: "Saved offline",
+                            description: isTimeout 
+                                ? "Connection too slow. Log will be uploaded later."
+                                : "Network error. Log will be uploaded later.",
+                        });
+                    } catch (queueError) {
+                        console.error("Queue error:", queueError);
+                        setSubmitting(false);
+                        sileo.error({
+                            title: "Failed to save",
+                            description: "Please try again",
+                        });
+                    }
+                } else {
+                    // Other Firebase error - still try to queue
+                    try {
+                        offlineQueue.add({
+                            ...logData,
+                            createdAt: new Date().toISOString(),
+                        });
+                        setSubmitting(false);
+                        onSuccess();
+                        sileo.warning({
+                            title: "Saved offline",
+                            description: "Log will be uploaded later.",
+                        });
+                    } catch (queueError) {
+                        console.error("Queue error:", queueError);
+                        setSubmitting(false);
+                        sileo.error({
+                            title: "Failed to submit",
+                            description: "Please try again",
+                        });
+                    }
                 }
             }
         } catch (err) {

@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import UserAppLayout from "@/components/UserAppLayout";
 import { Html5Qrcode } from "html5-qrcode";
 import { sileo } from "sileo";
+import { offlineQueue } from "@/lib/offlineQueue";
 
 interface TruckLog {
     id: string;
@@ -893,11 +894,12 @@ function QuickLogModal({
     async function handleSubmit() {
         if (!truckMovement || !quarry) return;
 
+        setSubmitting(true);
+
         try {
-            setSubmitting(true);
             const now = format(new Date(), "yyyy-MM-dd'T'HH:mm");
             
-            await addDoc(collection(db, "userTruckLogs"), {
+            const logData = {
                 quarryId: quarry.quarryId,
                 quarryName: quarry.quarryName,
                 quarryMunicipality: quarry.quarryMunicipality,
@@ -907,17 +909,63 @@ function QuickLogModal({
                 truckStatus: truckMovement === "Truck In" ? "Empty" : "Full",
                 truckCount: "1",
                 logDateTime: now,
-                createdAt: serverTimestamp(),
-            });
+            };
 
-            setSubmitting(false); // Reset before calling onSuccess
-            onSuccess();
+            // Try to submit with 3-second timeout
+            try {
+                // Create a timeout promise (3 seconds)
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('timeout')), 3000);
+                });
+
+                // Race between Firebase submission and timeout
+                await Promise.race([
+                    addDoc(collection(db, "userTruckLogs"), {
+                        ...logData,
+                        createdAt: serverTimestamp(),
+                    }),
+                    timeoutPromise
+                ]);
+
+                // Success!
+                setSubmitting(false);
+                onSuccess();
+            } catch (err: any) {
+                console.error("Firebase error:", err);
+                
+                // Check if it's a timeout or network error
+                const isTimeout = err.message === 'timeout';
+                const isNetworkError = err.message?.includes('network') || err.message?.includes('fetch');
+                
+                // Slow/weak connection or error - save offline automatically
+                try {
+                    offlineQueue.add({
+                        ...logData,
+                        createdAt: new Date().toISOString(),
+                    });
+                    setSubmitting(false);
+                    onSuccess();
+                    sileo.warning({
+                        title: "Saved offline",
+                        description: isTimeout 
+                            ? "Connection too slow. Log will be uploaded later."
+                            : "Network error. Log will be uploaded later.",
+                    });
+                } catch (queueError) {
+                    console.error("Queue error:", queueError);
+                    setSubmitting(false);
+                    sileo.error({
+                        title: "Failed to save",
+                        description: "Please try again",
+                    });
+                }
+            }
         } catch (err) {
-            console.error(err);
-            setSubmitting(false); // Reset on error
+            console.error("Unexpected error:", err);
+            setSubmitting(false);
             sileo.error({
-                title: "Failed to submit",
-                description: "Please try again",
+                title: "Error",
+                description: "Something went wrong. Please try again.",
             });
         }
     }
