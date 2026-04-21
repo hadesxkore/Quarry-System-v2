@@ -20,9 +20,10 @@ import {
 import {
     Plus, Search, Pencil, Trash2, Loader2, Mountain,
     FileText, AlertTriangle, MoreHorizontal, X, CalendarIcon,
-    Download, FileImage, ChevronDown,
+    Download, FileImage, ChevronDown, QrCode,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import QRCode from "qrcode";
 
 // ── PDF renderer ─────────────────────────────────────────────────────────────
 import {
@@ -532,6 +533,136 @@ function DeleteDialog({
     );
 }
 
+// ── QR Code Modal ────────────────────────────────────────────────────────────
+function QRCodeModal({
+    open, quarry, onClose,
+}: {
+    open: boolean;
+    quarry: QuarryRecord | null;
+    onClose: () => void;
+}) {
+    const [qrDataUrl, setQrDataUrl] = useState("");
+    const [generating, setGenerating] = useState(false);
+
+    useEffect(() => {
+        if (open && quarry) {
+            generateQR();
+        }
+    }, [open, quarry]);
+
+    async function generateQR() {
+        if (!quarry) return;
+        setGenerating(true);
+        try {
+            const qrData = JSON.stringify({
+                quarryId: quarry.id,
+                quarryName: quarry.proponent,
+                quarryMunicipality: quarry.municipality,
+            });
+            const dataUrl = await QRCode.toDataURL(qrData, {
+                width: 300,
+                margin: 2,
+                color: {
+                    dark: "#0f172a",
+                    light: "#ffffff",
+                },
+            });
+            setQrDataUrl(dataUrl);
+        } catch (err) {
+            console.error("QR generation failed", err);
+        } finally {
+            setGenerating(false);
+        }
+    }
+
+    function handleDownload() {
+        if (!qrDataUrl || !quarry) return;
+        const link = document.createElement("a");
+        link.href = qrDataUrl;
+        link.download = `QR-${quarry.proponent?.replace(/\s+/g, "-") || quarry.id}.png`;
+        link.click();
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+            <DialogContent className="max-w-sm bg-white border-gray-200 shadow-2xl p-0 overflow-hidden rounded-2xl">
+                <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-100">
+                    <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-slate-900 flex items-center justify-center shrink-0 shadow-sm">
+                            <QrCode className="w-4.5 h-4.5 text-white" strokeWidth={1.5} />
+                        </div>
+                        <div>
+                            <DialogTitle className="text-[16px] font-bold text-gray-900 leading-tight">
+                                Quarry QR Code
+                            </DialogTitle>
+                            <p className="text-[12px] text-gray-400 mt-0.5 font-normal truncate">
+                                {quarry?.proponent || "Quarry"}
+                            </p>
+                        </div>
+                    </div>
+                </DialogHeader>
+
+                <div className="px-6 py-5 space-y-4">
+                    {/* QR Code Display */}
+                    <div className="flex flex-col items-center gap-3">
+                        {generating ? (
+                            <div className="w-48 h-48 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center">
+                                <Loader2 className="w-6 h-6 text-gray-300 animate-spin" />
+                            </div>
+                        ) : qrDataUrl ? (
+                            <div className="bg-white p-3 border-2 border-gray-200 rounded-xl shadow-sm">
+                                <img src={qrDataUrl} alt="QR Code" className="w-48 h-48" />
+                            </div>
+                        ) : null}
+
+                        {/* Info */}
+                        <div className="text-center space-y-0.5">
+                            <p className="text-[13px] font-bold text-gray-900 truncate max-w-[250px]">
+                                {quarry?.proponent}
+                            </p>
+                            {quarry?.municipality && (
+                                <p className="text-[11px] text-gray-400">
+                                    {quarry.municipality}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* Instructions */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 w-full">
+                            <p className="text-[11px] text-blue-900 font-semibold mb-1.5">
+                                📱 How to use:
+                            </p>
+                            <ol className="text-[10px] text-blue-800 space-y-0.5 list-decimal list-inside">
+                                <li>Download and print this QR code</li>
+                                <li>Place it at the quarry entrance</li>
+                                <li>Drivers scan it to log truck movements</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter className="px-6 py-4 border-t border-gray-100 bg-gray-50/70 flex items-center justify-end gap-2">
+                    <Button
+                        variant="outline"
+                        onClick={onClose}
+                        className="border-gray-200 text-gray-600 hover:bg-gray-100 rounded-lg h-9 text-[12px] font-medium px-4"
+                    >
+                        Close
+                    </Button>
+                    <Button
+                        onClick={handleDownload}
+                        disabled={!qrDataUrl}
+                        className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg h-9 text-[12px] font-semibold gap-1.5 shadow-sm px-4"
+                    >
+                        <Download className="w-3.5 h-3.5" />
+                        Download QR Code
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 // ── PDF Styles ────────────────────────────────────────────────────────────────
 Font.registerHyphenationCallback((word) => [word]);
 
@@ -954,6 +1085,7 @@ export default function QuarryManagement() {
     const [addOpen, setAddOpen] = useState(false);
     const [editTarget, setEditTarget] = useState<QuarryRecord | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<QuarryRecord | null>(null);
+    const [qrTarget, setQrTarget] = useState<QuarryRecord | null>(null);
     const [menuOpen, setMenuOpen] = useState<string | null>(null);
     const [exportLoading, setExportLoading] = useState<"pdf" | "jpg" | null>(null);
 
@@ -1154,6 +1286,11 @@ export default function QuarryManagement() {
                                             onMouseLeave={() => setMenuOpen(null)}
                                         >
                                             <button
+                                                onClick={() => { setQrTarget(r); setMenuOpen(null); }}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gray-600 hover:bg-gray-50 transition-colors font-medium">
+                                                <QrCode className="w-3.5 h-3.5 text-gray-400" /> QR Code
+                                            </button>
+                                            <button
                                                 onClick={() => { setEditTarget(r); setMenuOpen(null); }}
                                                 className="w-full flex items-center gap-2 px-3 py-2 text-[12px] text-gray-600 hover:bg-gray-50 transition-colors font-medium">
                                                 <Pencil className="w-3.5 h-3.5 text-gray-400" /> Edit
@@ -1182,6 +1319,11 @@ export default function QuarryManagement() {
                 open={deleteTarget !== null}
                 record={deleteTarget}
                 onClose={() => setDeleteTarget(null)}
+            />
+            <QRCodeModal
+                open={qrTarget !== null}
+                quarry={qrTarget}
+                onClose={() => setQrTarget(null)}
             />
 
             {menuOpen && <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(null)} />}
