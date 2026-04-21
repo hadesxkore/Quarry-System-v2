@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { motion } from "motion/react";
 import {
-    LayoutDashboard, ClipboardList, History, LogOut,
+    LayoutDashboard, History, LogOut,
     MountainSnow, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,6 @@ import "sileo/styles.css";
 
 const NAV_ITEMS = [
     { to: "/user/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-    { to: "/user/truck-logs", icon: ClipboardList, label: "Log Truck" },
     { to: "/user/log-history", icon: History, label: "My Logs" },
 ];
 

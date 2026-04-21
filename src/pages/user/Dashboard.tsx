@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { format } from "date-fns";
 import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
     TrendingDown, TrendingUp, ClipboardList, Clock,
-    MountainSnow, ChevronRight, QrCode, Scan, Loader2, AlertCircle,
+    MountainSnow, ChevronRight, QrCode, Scan, Loader2, AlertCircle, Download, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
@@ -26,6 +26,12 @@ interface TruckLog {
     imageUrl?: string;
 }
 
+// PWA Install Prompt
+interface BeforeInstallPromptEvent extends Event {
+    prompt: () => Promise<void>;
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 export default function UserDashboard() {
     const { userProfile } = useAuth();
     const navigate = useNavigate();
@@ -38,6 +44,47 @@ export default function UserDashboard() {
         quarryName: string;
         quarryMunicipality: string;
     } | null>(null);
+    const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+    const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+    // PWA Install Prompt Handler
+    useEffect(() => {
+        const handler = (e: Event) => {
+            e.preventDefault();
+            setDeferredPrompt(e as BeforeInstallPromptEvent);
+            
+            // Check if user has dismissed the banner before
+            const dismissed = localStorage.getItem('pwa-install-dismissed');
+            if (!dismissed) {
+                setShowInstallBanner(true);
+            }
+        };
+
+        window.addEventListener('beforeinstallprompt', handler);
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+    }, []);
+
+    async function handleInstallClick() {
+        if (!deferredPrompt) return;
+
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        
+        if (outcome === 'accepted') {
+            sileo.success({
+                title: 'App installed!',
+                description: 'You can now use PGB Quarry from your home screen',
+            });
+        }
+        
+        setDeferredPrompt(null);
+        setShowInstallBanner(false);
+    }
+
+    function dismissInstallBanner() {
+        setShowInstallBanner(false);
+        localStorage.setItem('pwa-install-dismissed', 'true');
+    }
 
     useEffect(() => {
         if (!userProfile?.quarryId) { setLoading(false); return; }
@@ -68,6 +115,50 @@ export default function UserDashboard() {
 
     return (
         <div className="p-4 md:p-6 space-y-5 max-w-2xl mx-auto md:max-w-none">
+            {/* PWA Install Banner */}
+            <AnimatePresence>
+                {showInstallBanner && deferredPrompt && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-4 md:p-5 text-white shadow-lg"
+                    >
+                        <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                                <Download className="w-6 h-6 text-white" strokeWidth={1.5} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h3 className="text-[16px] font-bold text-white mb-1">Install PGB Quarry App</h3>
+                                <p className="text-[13px] text-white/80 mb-3">
+                                    Add to your home screen for quick access and offline support
+                                </p>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleInstallClick}
+                                        className="bg-white text-blue-600 px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-white/90 transition-colors"
+                                    >
+                                        Install Now
+                                    </button>
+                                    <button
+                                        onClick={dismissInstallBanner}
+                                        className="text-white/80 hover:text-white px-3 py-2 text-[13px] font-medium"
+                                    >
+                                        Maybe Later
+                                    </button>
+                                </div>
+                            </div>
+                            <button
+                                onClick={dismissInstallBanner}
+                                className="text-white/60 hover:text-white shrink-0"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Welcome banner */}
             <motion.div
                 initial={{ opacity: 0, y: 8 }}
@@ -124,17 +215,18 @@ export default function UserDashboard() {
             {/* Quick actions */}
             <div className="space-y-3">
                 <h2 className="text-[16px] font-bold text-gray-800 px-1">Quick Actions</h2>
+                
                 <button
-                    onClick={() => navigate("/user/truck-logs")}
+                    onClick={() => setScannerOpen(true)}
                     className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-2xl p-4 md:p-5 hover:shadow-md hover:border-slate-300 transition-all duration-200 active:scale-[0.99]"
                 >
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center shrink-0">
-                            <ClipboardList className="w-6 h-6 text-white" strokeWidth={1.5} />
+                        <div className="w-12 h-12 rounded-xl bg-purple-600 flex items-center justify-center shrink-0">
+                            <QrCode className="w-6 h-6 text-white" strokeWidth={1.5} />
                         </div>
                         <div className="text-left">
-                            <p className="text-[17px] font-bold text-gray-900">Log a Truck</p>
-                            <p className="text-[13px] text-gray-400">Record truck in or out movement</p>
+                            <p className="text-[17px] font-bold text-gray-900">Scan QR Code</p>
+                            <p className="text-[13px] text-gray-400">Quick log with QR scanner</p>
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-gray-300 shrink-0" />
@@ -151,22 +243,6 @@ export default function UserDashboard() {
                         <div className="text-left">
                             <p className="text-[17px] font-bold text-gray-900">View My Logs</p>
                             <p className="text-[13px] text-gray-400">{loading ? "…" : `${logs.length} total records`}</p>
-                        </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-300 shrink-0" />
-                </button>
-
-                <button
-                    onClick={() => setScannerOpen(true)}
-                    className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-2xl p-4 md:p-5 hover:shadow-md hover:border-slate-300 transition-all duration-200 active:scale-[0.99]"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-purple-600 flex items-center justify-center shrink-0">
-                            <QrCode className="w-6 h-6 text-white" strokeWidth={1.5} />
-                        </div>
-                        <div className="text-left">
-                            <p className="text-[17px] font-bold text-gray-900">Scan QR Code</p>
-                            <p className="text-[13px] text-gray-400">Quick log with QR scanner</p>
                         </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-gray-300 shrink-0" />

@@ -18,7 +18,6 @@ import UsersManagement from "@/pages/admin/UsersManagement";
 // User layout + pages
 import UserLayout from "@/layouts/UserLayout";
 import UserDashboard from "@/pages/user/Dashboard";
-import UserTruckLogs from "@/pages/user/TruckLogs";
 import UserLogHistory from "@/pages/user/LogHistory";
 
 function App() {
@@ -59,7 +58,6 @@ function App() {
           >
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<UserDashboard />} />
-            <Route path="truck-logs" element={<UserTruckLogs />} />
             <Route path="log-history" element={<UserLogHistory />} />
           </Route>
 
