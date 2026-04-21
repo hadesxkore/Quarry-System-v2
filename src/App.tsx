@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import LoadingScreen from "@/components/LoadingScreen";
+import { useState, useEffect } from "react";
 
 // Public
 import LoginPage from "@/pages/LoginPage";
@@ -15,12 +17,26 @@ import UsersTruckLogs from "@/pages/admin/UsersTruckLogs";
 import Reports from "@/pages/admin/Reports";
 import UsersManagement from "@/pages/admin/UsersManagement";
 
-// User layout + pages
-import UserLayout from "@/layouts/UserLayout";
+// User pages (standalone with built-in navigation)
 import UserDashboard from "@/pages/user/Dashboard";
 import UserLogHistory from "@/pages/user/LogHistory";
 
 function App() {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate initial app loading
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 2000); // 2 seconds
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
   return (
     <BrowserRouter>
       <AuthProvider>
@@ -47,18 +63,25 @@ function App() {
             <Route path="users-management" element={<UsersManagement />} />
           </Route>
 
-          {/* ── User (nested under user layout) ── */}
-          <Route
-            path="/user"
-            element={
-              <ProtectedRoute requiredRole="user">
-                <UserLayout />
-              </ProtectedRoute>
-            }
-          >
+          {/* ── User (standalone pages with built-in navigation) ── */}
+          <Route path="/user">
             <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<UserDashboard />} />
-            <Route path="log-history" element={<UserLogHistory />} />
+            <Route
+              path="dashboard"
+              element={
+                <ProtectedRoute requiredRole="user">
+                  <UserDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="log-history"
+              element={
+                <ProtectedRoute requiredRole="user">
+                  <UserLogHistory />
+                </ProtectedRoute>
+              }
+            />
           </Route>
 
           {/* ── Fallback ── */}

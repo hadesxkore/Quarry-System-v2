@@ -5,17 +5,15 @@ import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp 
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+    Dialog, DialogContent,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import {
-    TrendingDown, TrendingUp, ClipboardList, Clock,
-    MountainSnow, ChevronRight, QrCode, Scan, Loader2, AlertCircle, Download, X,
+    TrendingDown, TrendingUp, Scan, Loader2, AlertCircle, QrCode, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useNavigate } from "react-router-dom";
 import { Html5Qrcode } from "html5-qrcode";
 import { sileo } from "sileo";
+import UserAppLayout from "@/components/UserAppLayout";
 
 interface TruckLog {
     id: string;
@@ -26,65 +24,18 @@ interface TruckLog {
     imageUrl?: string;
 }
 
-// PWA Install Prompt
-interface BeforeInstallPromptEvent extends Event {
-    prompt: () => Promise<void>;
-    userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
-
 export default function UserDashboard() {
     const { userProfile } = useAuth();
-    const navigate = useNavigate();
     const [logs, setLogs] = useState<TruckLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [scannerOpen, setScannerOpen] = useState(false);
     const [quickLogOpen, setQuickLogOpen] = useState(false);
+    const [showSuccess, setShowSuccess] = useState(false);
     const [scannedQuarry, setScannedQuarry] = useState<{
         quarryId: string;
         quarryName: string;
         quarryMunicipality: string;
     } | null>(null);
-    const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-    const [showInstallBanner, setShowInstallBanner] = useState(false);
-
-    // PWA Install Prompt Handler
-    useEffect(() => {
-        const handler = (e: Event) => {
-            e.preventDefault();
-            setDeferredPrompt(e as BeforeInstallPromptEvent);
-            
-            // Check if user has dismissed the banner before
-            const dismissed = localStorage.getItem('pwa-install-dismissed');
-            if (!dismissed) {
-                setShowInstallBanner(true);
-            }
-        };
-
-        window.addEventListener('beforeinstallprompt', handler);
-        return () => window.removeEventListener('beforeinstallprompt', handler);
-    }, []);
-
-    async function handleInstallClick() {
-        if (!deferredPrompt) return;
-
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        
-        if (outcome === 'accepted') {
-            sileo.success({
-                title: 'App installed!',
-                description: 'You can now use PGB Quarry from your home screen',
-            });
-        }
-        
-        setDeferredPrompt(null);
-        setShowInstallBanner(false);
-    }
-
-    function dismissInstallBanner() {
-        setShowInstallBanner(false);
-        localStorage.setItem('pwa-install-dismissed', 'true');
-    }
 
     useEffect(() => {
         if (!userProfile?.quarryId) { setLoading(false); return; }
@@ -105,7 +56,6 @@ export default function UserDashboard() {
     const totalOut = logs.reduce((a, l) => l.truckMovement === "Truck Out" ? a + (parseInt(l.truckCount) || 0) : a, 0);
 
     const proponentName = userProfile?.quarryName ?? userProfile?.username ?? "—";
-    const municipality = userProfile?.quarryMunicipality ?? "";
     const greeting = (() => {
         const h = new Date().getHours();
         if (h < 12) return "Good morning";
@@ -114,139 +64,106 @@ export default function UserDashboard() {
     })();
 
     return (
-        <div className="p-4 md:p-6 space-y-5 max-w-2xl mx-auto md:max-w-none">
-            {/* PWA Install Banner */}
-            <AnimatePresence>
-                {showInstallBanner && deferredPrompt && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-4 md:p-5 text-white shadow-lg"
-                    >
-                        <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                                <Download className="w-6 h-6 text-white" strokeWidth={1.5} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <h3 className="text-[16px] font-bold text-white mb-1">Install PGB Quarry App</h3>
-                                <p className="text-[13px] text-white/80 mb-3">
-                                    Add to your home screen for quick access and offline support
-                                </p>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={handleInstallClick}
-                                        className="bg-white text-blue-600 px-4 py-2 rounded-lg text-[13px] font-semibold hover:bg-white/90 transition-colors"
-                                    >
-                                        Install Now
-                                    </button>
-                                    <button
-                                        onClick={dismissInstallBanner}
-                                        className="text-white/80 hover:text-white px-3 py-2 text-[13px] font-medium"
-                                    >
-                                        Maybe Later
-                                    </button>
-                                </div>
-                            </div>
-                            <button
-                                onClick={dismissInstallBanner}
-                                className="text-white/60 hover:text-white shrink-0"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
+        <UserAppLayout onScanClick={() => setScannerOpen(true)}>
+            <div className="p-5 space-y-5 max-w-2xl mx-auto">
+                {/* Welcome Card */}
+                <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-6 text-white shadow-lg"
+                >
+                    <p className="text-[13px] text-white/60 font-medium mb-1">{greeting} 👋</p>
+                    <h2 className="text-[22px] font-bold text-white mb-4">{proponentName}</h2>
+                    
+                    <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                        <div>
+                            <p className="text-[11px] text-white/50 mb-1">Today's date</p>
+                            <p className="text-[14px] font-bold text-white">{format(new Date(), "MMM d, yyyy")}</p>
                         </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                        <div className="text-right">
+                            <p className="text-[11px] text-white/50 mb-1">Today's logs</p>
+                            <p className="text-[28px] font-bold text-white leading-none">{todayLogs.length}</p>
+                        </div>
+                    </div>
+                </motion.div>
 
-            {/* Welcome banner */}
-            <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-slate-900 rounded-2xl p-5 md:p-6 text-white"
-            >
-                <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center shrink-0 border border-white/10">
-                        <MountainSnow className="w-7 h-7 text-white" strokeWidth={1.5} />
-                    </div>
-                    <div className="min-w-0">
-                        <p className="text-[14px] text-white/60 font-medium">{greeting} 👋</p>
-                        <h1 className="text-[20px] md:text-[22px] font-bold text-white leading-tight truncate">{proponentName}</h1>
-                        {municipality && (
-                            <p className="text-[13px] text-white/50 truncate">{municipality}</p>
-                        )}
-                    </div>
-                </div>
-                <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between">
-                    <div>
-                        <p className="text-[13px] text-white/50">Today's date</p>
-                        <p className="text-[16px] font-bold text-white">{format(new Date(), "MMMM d, yyyy")}</p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-[13px] text-white/50">Today's logs</p>
-                        <p className="text-[28px] font-bold text-white leading-none">{todayLogs.length}</p>
-                    </div>
-                </div>
-            </motion.div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-3">
-                {[
-                    { label: "Total Truck In", value: totalIn, icon: <TrendingDown className="w-5 h-5 text-emerald-500" />, color: "text-emerald-600", bg: "bg-emerald-50 border-emerald-100" },
-                    { label: "Total Truck Out", value: totalOut, icon: <TrendingUp className="w-5 h-5 text-blue-500" />, color: "text-blue-600", bg: "bg-blue-50 border-blue-100" },
-                ].map((s) => (
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-3">
                     <motion.div
-                        key={s.label}
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className={cn("rounded-2xl border p-4 flex items-center gap-3", s.bg)}
+                        className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4"
                     >
-                        <div className="w-11 h-11 rounded-xl bg-white border border-white/60 shadow-sm flex items-center justify-center shrink-0">
-                            {s.icon}
-                        </div>
-                        <div>
-                            <p className={cn("text-[26px] font-bold leading-tight", s.color)}>{loading ? "—" : s.value}</p>
-                            <p className="text-[12px] text-gray-500 font-medium leading-tight">{s.label}</p>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-emerald-200 flex items-center justify-center">
+                                <TrendingDown className="w-5 h-5 text-emerald-600" />
+                            </div>
+                            <div>
+                                <p className="text-[24px] font-bold text-emerald-700 leading-none">{loading ? "—" : totalIn}</p>
+                                <p className="text-[11px] text-emerald-600 font-medium">Truck In</p>
+                            </div>
                         </div>
                     </motion.div>
-                ))}
-            </div>
 
-            {/* Quick actions */}
-            <div className="space-y-3">
-                <h2 className="text-[16px] font-bold text-gray-800 px-1">Quick Actions</h2>
-                
-                <button
-                    onClick={() => setScannerOpen(true)}
-                    className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-2xl p-4 md:p-5 hover:shadow-md hover:border-slate-300 transition-all duration-200 active:scale-[0.99]"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-purple-600 flex items-center justify-center shrink-0">
-                            <QrCode className="w-6 h-6 text-white" strokeWidth={1.5} />
+                    <motion.div
+                        initial={{ opacity: 0, y: 6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.05 }}
+                        className="bg-blue-50 border border-blue-100 rounded-2xl p-4"
+                    >
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-blue-200 flex items-center justify-center">
+                                <TrendingUp className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div>
+                                <p className="text-[24px] font-bold text-blue-700 leading-none">{loading ? "—" : totalOut}</p>
+                                <p className="text-[11px] text-blue-600 font-medium">Truck Out</p>
+                            </div>
                         </div>
-                        <div className="text-left">
-                            <p className="text-[17px] font-bold text-gray-900">Scan QR Code</p>
-                            <p className="text-[13px] text-gray-400">Quick log with QR scanner</p>
+                    </motion.div>
+                </div>
+
+                {/* Recent Activity */}
+                {todayLogs.length > 0 && (
+                    <div className="space-y-3">
+                        <h3 className="text-[14px] font-bold text-gray-800 px-1">Today's Activity</h3>
+                        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden divide-y divide-gray-50">
+                            {todayLogs.slice(0, 5).map((log) => (
+                                <div key={log.id} className="px-4 py-3 flex items-center gap-3">
+                                    <div className={cn(
+                                        "w-9 h-9 rounded-xl flex items-center justify-center",
+                                        log.truckMovement === "Truck In" ? "bg-emerald-50" : "bg-blue-50"
+                                    )}>
+                                        {log.truckMovement === "Truck In"
+                                            ? <TrendingDown className="w-4.5 h-4.5 text-emerald-500" />
+                                            : <TrendingUp className="w-4.5 h-4.5 text-blue-500" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[14px] font-bold text-gray-800">{log.truckMovement}</p>
+                                        <p className="text-[11px] text-gray-400">{log.truckStatus} · {log.truckCount} truck{parseInt(log.truckCount) !== 1 ? "s" : ""}</p>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 font-medium">
+                                        {log.logDateTime ? format(new Date(log.logDateTime), "h:mm a") : "—"}
+                                    </p>
+                                </div>
+                            ))}
                         </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-gray-300 shrink-0" />
-                </button>
+                )}
 
-                <button
-                    onClick={() => navigate("/user/log-history")}
-                    className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-2xl p-4 md:p-5 hover:shadow-md hover:border-slate-300 transition-all duration-200 active:scale-[0.99]"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
-                            <Clock className="w-6 h-6 text-white" strokeWidth={1.5} />
-                        </div>
-                        <div className="text-left">
-                            <p className="text-[17px] font-bold text-gray-900">View My Logs</p>
-                            <p className="text-[13px] text-gray-400">{loading ? "…" : `${logs.length} total records`}</p>
-                        </div>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-gray-300 shrink-0" />
-                </button>
+                {/* Scan Button Hint */}
+                <div className="text-center py-8">
+                    <motion.div
+                        animate={{ y: [0, -10, 0] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="inline-block"
+                    >
+                        <QrCode className="w-12 h-12 text-purple-300 mx-auto mb-2" />
+                    </motion.div>
+                    <p className="text-[13px] text-gray-400">
+                        Tap the purple button to scan QR code
+                    </p>
+                </div>
             </div>
 
             {/* QR Scanner Modal */}
@@ -269,36 +186,16 @@ export default function UserDashboard() {
                     setQuickLogOpen(false);
                     setScannedQuarry(null);
                 }}
+                onSuccess={() => {
+                    setQuickLogOpen(false);
+                    setShowSuccess(true);
+                    setTimeout(() => setShowSuccess(false), 3000);
+                }}
             />
 
-            {/* Recent logs */}
-            {todayLogs.length > 0 && (
-                <div className="space-y-3">
-                    <h2 className="text-[16px] font-bold text-gray-800 px-1">Today's Activity</h2>
-                    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-50">
-                        {todayLogs.slice(0, 5).map((log) => (
-                            <div key={log.id} className="px-4 py-3.5 flex items-center gap-3">
-                                <div className={cn(
-                                    "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
-                                    log.truckMovement === "Truck In" ? "bg-emerald-50" : "bg-blue-50"
-                                )}>
-                                    {log.truckMovement === "Truck In"
-                                        ? <TrendingDown className="w-4.5 h-4.5 text-emerald-500" />
-                                        : <TrendingUp className="w-4.5 h-4.5 text-blue-500" />}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-[15px] font-bold text-gray-800">{log.truckMovement}</p>
-                                    <p className="text-[12px] text-gray-400">{log.truckStatus} · {log.truckCount} truck{parseInt(log.truckCount) !== 1 ? "s" : ""}</p>
-                                </div>
-                                <p className="text-[12px] text-gray-400 font-medium shrink-0">
-                                    {log.logDateTime ? format(new Date(log.logDateTime), "h:mm a") : "—"}
-                                </p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
+            {/* Success Modal */}
+            <SuccessModal open={showSuccess} />
+        </UserAppLayout>
     );
 }
 
@@ -393,66 +290,131 @@ function QRScannerModal({
 
     return (
         <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-            <DialogContent className="max-w-md bg-white border-gray-200 shadow-2xl p-0 overflow-hidden rounded-2xl">
-                <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-100">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center shrink-0 shadow-sm">
-                            <Scan className="w-4.5 h-4.5 text-white" strokeWidth={1.5} />
+            <DialogContent className="max-w-md bg-white border-0 shadow-2xl p-0 overflow-hidden rounded-3xl">
+                {/* Header with gradient */}
+                <div className="bg-gradient-to-br from-purple-600 to-purple-700 px-6 pt-6 pb-5">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                                <QrCode className="w-6 h-6 text-white" strokeWidth={2} />
+                            </div>
+                            <div>
+                                <h3 className="text-[18px] font-bold text-white leading-tight">
+                                    Scan QR Code
+                                </h3>
+                                <p className="text-[12px] text-purple-100 mt-0.5">
+                                    Point camera at quarry QR code
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <DialogTitle className="text-[16px] font-bold text-gray-900 leading-tight">
-                                Scan Quarry QR Code
-                            </DialogTitle>
-                            <p className="text-[12px] text-gray-400 mt-0.5 font-normal">
-                                Point camera at the QR code
-                            </p>
-                        </div>
+                        <button
+                            onClick={onClose}
+                            className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-colors"
+                        >
+                            <X className="w-4.5 h-4.5" />
+                        </button>
                     </div>
-                </DialogHeader>
+                </div>
 
-                <div className="px-6 py-5 space-y-4">
-                    {/* Scanner */}
-                    <div className="relative">
+                <div className="px-6 py-6 space-y-4">
+                    {/* Scanner with modern loading */}
+                    <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-900">
                         <div
                             id={readerIdRef.current}
-                            className="rounded-xl overflow-hidden border-2 border-gray-200"
+                            className="w-full h-full"
                         />
                         {!scanning && !error && (
-                            <div className="absolute inset-0 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center">
-                                <Loader2 className="w-8 h-8 text-gray-300 animate-spin" />
+                            <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-blue-600/20 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+                                {/* Animated scanning icon */}
+                                <div className="relative">
+                                    <div className="w-20 h-20 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center">
+                                        <Scan className="w-10 h-10 text-white" strokeWidth={1.5} />
+                                    </div>
+                                    {/* Pulse rings */}
+                                    <div className="absolute inset-0 rounded-2xl border-2 border-white/30 animate-ping" />
+                                    <div className="absolute inset-0 rounded-2xl border-2 border-white/20" style={{ animation: "ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite" }} />
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-white font-semibold text-[15px] mb-1">Initializing camera...</p>
+                                    <div className="flex items-center justify-center gap-1">
+                                        <div className="w-2 h-2 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: "0ms" }} />
+                                        <div className="w-2 h-2 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: "150ms" }} />
+                                        <div className="w-2 h-2 rounded-full bg-white/60 animate-bounce" style={{ animationDelay: "300ms" }} />
+                                    </div>
+                                </div>
                             </div>
                         )}
+                        
+                        {/* Scanning animation overlay */}
+                        {scanning && !error && (
+                            <div className="absolute inset-0 pointer-events-none">
+                                {/* Animated scanning line */}
+                                <motion.div
+                                    className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-purple-400 to-transparent shadow-lg shadow-purple-400/50"
+                                    animate={{
+                                        top: ["10%", "90%", "10%"]
+                                    }}
+                                    transition={{
+                                        duration: 2,
+                                        repeat: Infinity,
+                                        ease: "linear"
+                                    }}
+                                />
+                                
+                                {/* Scanning text */}
+                                <div className="absolute bottom-4 left-0 right-0 text-center">
+                                    <div className="inline-flex items-center gap-2 bg-purple-600/90 backdrop-blur-sm text-white px-4 py-2 rounded-full text-[13px] font-bold">
+                                        <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                                        Scanning...
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+
                     </div>
 
                     {/* Error */}
                     {error && (
-                        <div className="flex items-center gap-2 text-red-600 text-[12px] bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 font-medium">
-                            <AlertCircle className="w-4 h-4 shrink-0" />
-                            {error}
-                        </div>
+                        <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-start gap-3 text-red-600 text-[13px] bg-red-50 border border-red-200 rounded-xl px-4 py-3 font-medium"
+                        >
+                            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                            <div>
+                                <p className="font-bold text-red-700 mb-0.5">Scanner Error</p>
+                                <p className="text-red-600">{error}</p>
+                            </div>
+                        </motion.div>
                     )}
 
                     {/* Instructions */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <p className="text-[11px] text-blue-900 font-semibold mb-1.5">
-                            📱 How to scan:
-                        </p>
-                        <ol className="text-[10px] text-blue-800 space-y-0.5 list-decimal list-inside">
-                            <li>Allow camera access when prompted</li>
-                            <li>Point camera at the quarry QR code</li>
-                            <li>Hold steady until it scans automatically</li>
-                        </ol>
+                    <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200/50 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center">
+                                <span className="text-white text-[12px] font-bold">💡</span>
+                            </div>
+                            <p className="text-[13px] text-blue-900 font-bold">
+                                Quick Tips
+                            </p>
+                        </div>
+                        <ul className="text-[12px] text-blue-800 space-y-1.5 ml-8">
+                            <li className="flex items-start gap-2">
+                                <span className="text-blue-500 mt-0.5">•</span>
+                                <span>Allow camera access when prompted</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-blue-500 mt-0.5">•</span>
+                                <span>Hold phone steady and align QR code</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                                <span className="text-blue-500 mt-0.5">•</span>
+                                <span>Scanner will detect automatically</span>
+                            </li>
+                        </ul>
                     </div>
                 </div>
-
-                <DialogFooter className="px-6 py-4 border-t border-gray-100 bg-gray-50/70 flex items-center justify-end">
-                    <Button
-                        onClick={onClose}
-                        className="border-gray-200 text-gray-600 hover:bg-gray-100 rounded-lg h-9 text-[12px] font-medium px-4"
-                    >
-                        Cancel
-                    </Button>
-                </DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -464,11 +426,13 @@ function QuickLogModal({
     quarry,
     userProfile,
     onClose,
+    onSuccess,
 }: {
     open: boolean;
     quarry: { quarryId: string; quarryName: string; quarryMunicipality: string } | null;
     userProfile: any;
     onClose: () => void;
+    onSuccess: () => void;
 }) {
     const [truckMovement, setTruckMovement] = useState<"Truck In" | "Truck Out" | "">("");
     const [submitting, setSubmitting] = useState(false);
@@ -499,105 +463,245 @@ function QuickLogModal({
                 createdAt: serverTimestamp(),
             });
 
-            sileo.success({
-                title: "Log submitted!",
-                description: `${truckMovement} recorded successfully`,
-            });
-            onClose();
+            onSuccess();
         } catch (err) {
             console.error(err);
             sileo.error({
                 title: "Failed to submit",
                 description: "Please try again",
             });
-        } finally {
             setSubmitting(false);
         }
     }
 
     return (
         <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-            <DialogContent className="max-w-sm bg-white border-gray-200 shadow-2xl p-0 overflow-hidden rounded-2xl">
-                <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-100">
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center shrink-0 shadow-sm">
-                            <ClipboardList className="w-4.5 h-4.5 text-white" strokeWidth={1.5} />
+            <DialogContent className="max-w-[90vw] sm:max-w-sm bg-white border-0 shadow-2xl p-0 overflow-hidden rounded-3xl">
+                {/* Header with gradient */}
+                <div className="bg-gradient-to-br from-purple-600 to-purple-700 px-4 sm:px-6 pt-5 sm:pt-6 pb-4 sm:pb-5">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                            <motion.div
+                                initial={{ scale: 0, rotate: -180 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                transition={{ type: "spring", duration: 0.6 }}
+                                className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0"
+                            >
+                                <QrCode className="w-5 h-5 sm:w-6 sm:h-6 text-white" strokeWidth={2} />
+                            </motion.div>
+                            <div className="min-w-0 flex-1">
+                                <h3 className="text-[16px] sm:text-[18px] font-bold text-white leading-tight">
+                                    Quick Log
+                                </h3>
+                                <p className="text-[11px] sm:text-[12px] text-purple-100 mt-0.5 truncate">
+                                    {quarry?.quarryName}
+                                </p>
+                            </div>
                         </div>
-                        <div className="min-w-0">
-                            <DialogTitle className="text-[16px] font-bold text-gray-900 leading-tight">
-                                Quick Log
-                            </DialogTitle>
-                            <p className="text-[12px] text-gray-400 mt-0.5 font-normal truncate">
-                                {quarry?.quarryName}
-                            </p>
-                        </div>
+                        <button
+                            onClick={onClose}
+                            disabled={submitting}
+                            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white hover:bg-white/30 transition-colors shrink-0"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
                     </div>
-                </DialogHeader>
+                </div>
 
-                <div className="px-6 py-5 space-y-4">
-                    <p className="text-[13px] text-gray-600 text-center">
-                        Select truck movement:
-                    </p>
+                <div className="px-4 sm:px-6 py-5 sm:py-6 space-y-4 sm:space-y-5">
+                    <div className="text-center">
+                        <p className="text-[14px] sm:text-[15px] text-gray-600 font-medium">
+                            Select truck movement
+                        </p>
+                    </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    {/* Movement selection cards */}
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
                         {(["Truck In", "Truck Out"] as const).map((mv) => (
-                            <button
+                            <motion.button
                                 key={mv}
                                 onClick={() => setTruckMovement(mv)}
                                 disabled={submitting}
+                                whileTap={{ scale: 0.95 }}
                                 className={cn(
-                                    "flex flex-col items-center gap-2 py-4 rounded-xl border-2 transition-all duration-150 active:scale-95",
+                                    "relative flex flex-col items-center gap-2 sm:gap-3 py-5 sm:py-6 rounded-2xl border-2 transition-all duration-200 overflow-hidden",
                                     truckMovement === mv
                                         ? mv === "Truck In"
-                                            ? "border-emerald-400 bg-emerald-50"
-                                            : "border-blue-400 bg-blue-50"
-                                        : "border-gray-200 bg-gray-50 hover:border-gray-300"
+                                            ? "border-emerald-400 bg-gradient-to-br from-emerald-50 to-emerald-100 shadow-lg shadow-emerald-200/50"
+                                            : "border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100 shadow-lg shadow-blue-200/50"
+                                        : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-md"
                                 )}
                             >
-                                <div className={cn(
-                                    "w-10 h-10 rounded-lg flex items-center justify-center",
-                                    truckMovement === mv
-                                        ? mv === "Truck In" ? "bg-emerald-500" : "bg-blue-500"
-                                        : "bg-gray-200"
-                                )}>
+                                {/* Selected indicator */}
+                                {truckMovement === mv && (
+                                    <motion.div
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2"
+                                    >
+                                        <div className={cn(
+                                            "w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center",
+                                            mv === "Truck In" ? "bg-emerald-500" : "bg-blue-500"
+                                        )}>
+                                            <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                            </svg>
+                                        </div>
+                                    </motion.div>
+                                )}
+
+                                <motion.div
+                                    animate={{
+                                        scale: truckMovement === mv ? 1.1 : 1,
+                                    }}
+                                    transition={{ type: "spring", stiffness: 300 }}
+                                    className={cn(
+                                        "w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition-colors",
+                                        truckMovement === mv
+                                            ? mv === "Truck In" ? "bg-emerald-500" : "bg-blue-500"
+                                            : "bg-gray-100"
+                                    )}
+                                >
                                     {mv === "Truck In"
-                                        ? <TrendingDown className={cn("w-5 h-5", truckMovement === mv ? "text-white" : "text-gray-400")} strokeWidth={2} />
-                                        : <TrendingUp className={cn("w-5 h-5", truckMovement === mv ? "text-white" : "text-gray-400")} strokeWidth={2} />
+                                        ? <TrendingDown className={cn("w-6 h-6 sm:w-7 sm:h-7", truckMovement === mv ? "text-white" : "text-gray-400")} strokeWidth={2.5} />
+                                        : <TrendingUp className={cn("w-6 h-6 sm:w-7 sm:h-7", truckMovement === mv ? "text-white" : "text-gray-400")} strokeWidth={2.5} />
                                     }
-                                </div>
+                                </motion.div>
                                 <span className={cn(
-                                    "text-[14px] font-bold",
+                                    "text-[13px] sm:text-[15px] font-bold transition-colors",
                                     truckMovement === mv
                                         ? mv === "Truck In" ? "text-emerald-700" : "text-blue-700"
                                         : "text-gray-500"
                                 )}>
                                     {mv}
                                 </span>
-                            </button>
+                            </motion.button>
                         ))}
                     </div>
-                </div>
 
-                <DialogFooter className="px-6 py-4 border-t border-gray-100 bg-gray-50/70 flex items-center justify-end gap-2">
-                    <Button
-                        variant="outline"
-                        onClick={onClose}
-                        disabled={submitting}
-                        className="border-gray-200 text-gray-600 hover:bg-gray-100 rounded-lg h-9 text-[12px] font-medium px-4"
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        onClick={handleSubmit}
-                        disabled={!truckMovement || submitting}
-                        className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg h-9 text-[12px] font-semibold px-4 min-w-[80px]"
-                    >
-                        {submitting ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : "Submit"}
-                    </Button>
-                </DialogFooter>
+                    {/* Action buttons */}
+                    <div className="flex gap-2 sm:gap-3 pt-1 sm:pt-2">
+                        <button
+                            onClick={onClose}
+                            disabled={submitting}
+                            className="flex-1 py-2.5 sm:py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold text-[14px] sm:text-[15px] hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={!truckMovement || submitting}
+                            className={cn(
+                                "flex-1 py-2.5 sm:py-3 rounded-2xl font-bold text-[14px] sm:text-[15px] transition-all disabled:opacity-50 disabled:cursor-not-allowed",
+                                truckMovement
+                                    ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg shadow-purple-500/30 hover:shadow-xl hover:shadow-purple-500/40"
+                                    : "bg-gray-100 text-gray-400"
+                            )}
+                        >
+                            {submitting ? (
+                                <div className="flex items-center justify-center gap-2">
+                                    <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                                    <span className="hidden sm:inline">Submitting...</span>
+                                </div>
+                            ) : "Submit"}
+                        </button>
+                    </div>
+                </div>
             </DialogContent>
         </Dialog>
+    );
+}
+
+// ── Success Modal ────────────────────────────────────────────────────────────
+function SuccessModal({ open }: { open: boolean }) {
+    return (
+        <AnimatePresence>
+            {open && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                >
+                    <motion.div
+                        initial={{ scale: 0.8, opacity: 0, y: 20 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        exit={{ scale: 0.8, opacity: 0, y: 20 }}
+                        transition={{ type: "spring", duration: 0.5 }}
+                        className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl"
+                    >
+                        {/* Success icon with animation */}
+                        <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+                            className="relative mx-auto w-24 h-24 mb-6"
+                        >
+                            {/* Outer ring */}
+                            <motion.div
+                                initial={{ scale: 0.8, opacity: 0 }}
+                                animate={{ scale: 1.2, opacity: 0 }}
+                                transition={{ duration: 1, repeat: Infinity }}
+                                className="absolute inset-0 rounded-full bg-emerald-400"
+                            />
+                            {/* Inner circle */}
+                            <div className="absolute inset-0 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-500/50">
+                                <motion.svg
+                                    initial={{ pathLength: 0 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+                                    className="w-12 h-12 text-white"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <motion.path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={3}
+                                        d="M5 13l4 4L19 7"
+                                    />
+                                </motion.svg>
+                            </div>
+                        </motion.div>
+
+                        {/* Success text */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.4 }}
+                            className="text-center"
+                        >
+                            <h3 className="text-[24px] font-bold text-gray-900 mb-2">
+                                Success! 🎉
+                            </h3>
+                            <p className="text-[15px] text-gray-600">
+                                Truck log has been recorded successfully
+                            </p>
+                        </motion.div>
+
+                        {/* Confetti particles */}
+                        {[...Array(8)].map((_, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ scale: 0, x: 0, y: 0 }}
+                                animate={{
+                                    scale: [0, 1, 0],
+                                    x: [0, (Math.random() - 0.5) * 200],
+                                    y: [0, -Math.random() * 150],
+                                }}
+                                transition={{ delay: 0.3 + i * 0.05, duration: 1 }}
+                                className="absolute w-3 h-3 rounded-full"
+                                style={{
+                                    background: ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b'][i % 4],
+                                    left: '50%',
+                                    top: '35%',
+                                }}
+                            />
+                        ))}
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 }
